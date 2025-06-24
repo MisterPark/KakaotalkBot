@@ -32,18 +32,25 @@
             this.button1 = new System.Windows.Forms.Button();
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabPage1 = new System.Windows.Forms.TabPage();
+            this.button5 = new System.Windows.Forms.Button();
+            this.textBox6 = new System.Windows.Forms.TextBox();
+            this.textBox5 = new System.Windows.Forms.TextBox();
+            this.textBox4 = new System.Windows.Forms.TextBox();
+            this.button4 = new System.Windows.Forms.Button();
             this.tabPage2 = new System.Windows.Forms.TabPage();
-            this.richTextBox1 = new System.Windows.Forms.RichTextBox();
-            this.textBox1 = new System.Windows.Forms.TextBox();
-            this.button2 = new System.Windows.Forms.Button();
+            this.label2 = new System.Windows.Forms.Label();
+            this.label1 = new System.Windows.Forms.Label();
+            this.textBox3 = new System.Windows.Forms.TextBox();
+            this.textBox2 = new System.Windows.Forms.TextBox();
+            this.button3 = new System.Windows.Forms.Button();
             this.listView1 = new System.Windows.Forms.ListView();
             this.columnHeader1 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.columnHeader2 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.button3 = new System.Windows.Forms.Button();
-            this.textBox2 = new System.Windows.Forms.TextBox();
-            this.textBox3 = new System.Windows.Forms.TextBox();
-            this.label1 = new System.Windows.Forms.Label();
-            this.label2 = new System.Windows.Forms.Label();
+            this.button2 = new System.Windows.Forms.Button();
+            this.textBox1 = new System.Windows.Forms.TextBox();
+            this.richTextBox1 = new System.Windows.Forms.RichTextBox();
+            this.openFileDialog1 = new System.Windows.Forms.OpenFileDialog();
+            this.button6 = new System.Windows.Forms.Button();
             this.tabControl1.SuspendLayout();
             this.tabPage1.SuspendLayout();
             this.tabPage2.SuspendLayout();
@@ -73,6 +80,11 @@
             // 
             // tabPage1
             // 
+            this.tabPage1.Controls.Add(this.button5);
+            this.tabPage1.Controls.Add(this.textBox6);
+            this.tabPage1.Controls.Add(this.textBox5);
+            this.tabPage1.Controls.Add(this.textBox4);
+            this.tabPage1.Controls.Add(this.button4);
             this.tabPage1.Controls.Add(this.button1);
             this.tabPage1.Location = new System.Drawing.Point(4, 22);
             this.tabPage1.Name = "tabPage1";
@@ -82,8 +94,50 @@
             this.tabPage1.Text = "보이스룸";
             this.tabPage1.UseVisualStyleBackColor = true;
             // 
+            // button5
+            // 
+            this.button5.Location = new System.Drawing.Point(560, 221);
+            this.button5.Name = "button5";
+            this.button5.Size = new System.Drawing.Size(75, 21);
+            this.button5.TabIndex = 5;
+            this.button5.Text = "button5";
+            this.button5.UseVisualStyleBackColor = true;
+            this.button5.Click += new System.EventHandler(this.button5_Click);
+            // 
+            // textBox6
+            // 
+            this.textBox6.Location = new System.Drawing.Point(203, 275);
+            this.textBox6.Name = "textBox6";
+            this.textBox6.Size = new System.Drawing.Size(351, 21);
+            this.textBox6.TabIndex = 4;
+            // 
+            // textBox5
+            // 
+            this.textBox5.Location = new System.Drawing.Point(203, 248);
+            this.textBox5.Name = "textBox5";
+            this.textBox5.Size = new System.Drawing.Size(351, 21);
+            this.textBox5.TabIndex = 3;
+            // 
+            // textBox4
+            // 
+            this.textBox4.Location = new System.Drawing.Point(203, 221);
+            this.textBox4.Name = "textBox4";
+            this.textBox4.Size = new System.Drawing.Size(351, 21);
+            this.textBox4.TabIndex = 2;
+            // 
+            // button4
+            // 
+            this.button4.Location = new System.Drawing.Point(560, 273);
+            this.button4.Name = "button4";
+            this.button4.Size = new System.Drawing.Size(75, 23);
+            this.button4.TabIndex = 1;
+            this.button4.Text = "button4";
+            this.button4.UseVisualStyleBackColor = true;
+            this.button4.Click += new System.EventHandler(this.button4_Click);
+            // 
             // tabPage2
             // 
+            this.tabPage2.Controls.Add(this.button6);
             this.tabPage2.Controls.Add(this.label2);
             this.tabPage2.Controls.Add(this.label1);
             this.tabPage2.Controls.Add(this.textBox3);
@@ -101,33 +155,47 @@
             this.tabPage2.Text = "채팅";
             this.tabPage2.UseVisualStyleBackColor = true;
             // 
-            // richTextBox1
+            // label2
             // 
-            this.richTextBox1.BackColor = System.Drawing.SystemColors.WindowFrame;
-            this.richTextBox1.Font = new System.Drawing.Font("돋움체", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(129)));
-            this.richTextBox1.Location = new System.Drawing.Point(8, 248);
-            this.richTextBox1.Name = "richTextBox1";
-            this.richTextBox1.Size = new System.Drawing.Size(414, 265);
-            this.richTextBox1.TabIndex = 0;
-            this.richTextBox1.Text = "";
+            this.label2.AutoSize = true;
+            this.label2.Location = new System.Drawing.Point(8, 578);
+            this.label2.Name = "label2";
+            this.label2.Size = new System.Drawing.Size(92, 12);
+            this.label2.TabIndex = 9;
+            this.label2.Text = "SpreadSheetID:";
             // 
-            // textBox1
+            // label1
             // 
-            this.textBox1.Location = new System.Drawing.Point(8, 6);
-            this.textBox1.Name = "textBox1";
-            this.textBox1.Size = new System.Drawing.Size(414, 21);
-            this.textBox1.TabIndex = 1;
+            this.label1.AutoSize = true;
+            this.label1.Location = new System.Drawing.Point(8, 551);
+            this.label1.Name = "label1";
+            this.label1.Size = new System.Drawing.Size(105, 12);
+            this.label1.TabIndex = 8;
+            this.label1.Text = "ApplicationName:";
             // 
-            // button2
+            // textBox3
             // 
-            this.button2.BackColor = System.Drawing.Color.Red;
-            this.button2.Location = new System.Drawing.Point(8, 221);
-            this.button2.Name = "button2";
-            this.button2.Size = new System.Drawing.Size(414, 23);
-            this.button2.TabIndex = 2;
-            this.button2.Text = "채팅 감지";
-            this.button2.UseVisualStyleBackColor = false;
-            this.button2.Click += new System.EventHandler(this.button2_Click);
+            this.textBox3.Location = new System.Drawing.Point(117, 575);
+            this.textBox3.Name = "textBox3";
+            this.textBox3.Size = new System.Drawing.Size(305, 21);
+            this.textBox3.TabIndex = 7;
+            // 
+            // textBox2
+            // 
+            this.textBox2.Location = new System.Drawing.Point(117, 548);
+            this.textBox2.Name = "textBox2";
+            this.textBox2.Size = new System.Drawing.Size(305, 21);
+            this.textBox2.TabIndex = 6;
+            // 
+            // button3
+            // 
+            this.button3.Location = new System.Drawing.Point(10, 33);
+            this.button3.Name = "button3";
+            this.button3.Size = new System.Drawing.Size(412, 23);
+            this.button3.TabIndex = 5;
+            this.button3.Text = "Refresh";
+            this.button3.UseVisualStyleBackColor = true;
+            this.button3.Click += new System.EventHandler(this.button3_Click);
             // 
             // listView1
             // 
@@ -135,7 +203,7 @@
             this.columnHeader1,
             this.columnHeader2});
             this.listView1.HideSelection = false;
-            this.listView1.Location = new System.Drawing.Point(8, 33);
+            this.listView1.Location = new System.Drawing.Point(8, 62);
             this.listView1.Name = "listView1";
             this.listView1.Size = new System.Drawing.Size(414, 182);
             this.listView1.TabIndex = 4;
@@ -153,47 +221,48 @@
             this.columnHeader2.Text = "Handle";
             this.columnHeader2.Width = 150;
             // 
-            // button3
+            // button2
             // 
-            this.button3.Location = new System.Drawing.Point(517, 48);
-            this.button3.Name = "button3";
-            this.button3.Size = new System.Drawing.Size(75, 23);
-            this.button3.TabIndex = 5;
-            this.button3.Text = "button3";
-            this.button3.UseVisualStyleBackColor = true;
-            this.button3.Click += new System.EventHandler(this.button3_Click_1);
+            this.button2.BackColor = System.Drawing.Color.Red;
+            this.button2.Location = new System.Drawing.Point(8, 250);
+            this.button2.Name = "button2";
+            this.button2.Size = new System.Drawing.Size(414, 23);
+            this.button2.TabIndex = 2;
+            this.button2.Text = "채팅 감지";
+            this.button2.UseVisualStyleBackColor = false;
+            this.button2.Click += new System.EventHandler(this.button2_Click);
             // 
-            // textBox2
+            // textBox1
             // 
-            this.textBox2.Location = new System.Drawing.Point(117, 519);
-            this.textBox2.Name = "textBox2";
-            this.textBox2.Size = new System.Drawing.Size(305, 21);
-            this.textBox2.TabIndex = 6;
+            this.textBox1.Location = new System.Drawing.Point(8, 6);
+            this.textBox1.Name = "textBox1";
+            this.textBox1.Size = new System.Drawing.Size(414, 21);
+            this.textBox1.TabIndex = 1;
             // 
-            // textBox3
+            // richTextBox1
             // 
-            this.textBox3.Location = new System.Drawing.Point(117, 546);
-            this.textBox3.Name = "textBox3";
-            this.textBox3.Size = new System.Drawing.Size(305, 21);
-            this.textBox3.TabIndex = 7;
+            this.richTextBox1.BackColor = System.Drawing.SystemColors.WindowFrame;
+            this.richTextBox1.Font = new System.Drawing.Font("돋움체", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(129)));
+            this.richTextBox1.Location = new System.Drawing.Point(8, 277);
+            this.richTextBox1.Name = "richTextBox1";
+            this.richTextBox1.Size = new System.Drawing.Size(414, 265);
+            this.richTextBox1.TabIndex = 0;
+            this.richTextBox1.Text = "";
             // 
-            // label1
+            // openFileDialog1
             // 
-            this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(8, 522);
-            this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(105, 12);
-            this.label1.TabIndex = 8;
-            this.label1.Text = "ApplicationName:";
+            this.openFileDialog1.FileName = "openFileDialog1";
+            this.openFileDialog1.RestoreDirectory = true;
             // 
-            // label2
+            // button6
             // 
-            this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(8, 549);
-            this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(92, 12);
-            this.label2.TabIndex = 9;
-            this.label2.Text = "SpreadSheetID:";
+            this.button6.Location = new System.Drawing.Point(563, 203);
+            this.button6.Name = "button6";
+            this.button6.Size = new System.Drawing.Size(75, 23);
+            this.button6.TabIndex = 10;
+            this.button6.Text = "button6";
+            this.button6.UseVisualStyleBackColor = true;
+            this.button6.Click += new System.EventHandler(this.button6_Click);
             // 
             // Form1
             // 
@@ -208,6 +277,7 @@
             this.Load += new System.EventHandler(this.Form1_Load);
             this.tabControl1.ResumeLayout(false);
             this.tabPage1.ResumeLayout(false);
+            this.tabPage1.PerformLayout();
             this.tabPage2.ResumeLayout(false);
             this.tabPage2.PerformLayout();
             this.ResumeLayout(false);
@@ -231,6 +301,13 @@
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.TextBox textBox3;
         private System.Windows.Forms.TextBox textBox2;
+        private System.Windows.Forms.Button button4;
+        private System.Windows.Forms.TextBox textBox6;
+        private System.Windows.Forms.TextBox textBox5;
+        private System.Windows.Forms.TextBox textBox4;
+        private System.Windows.Forms.Button button5;
+        private System.Windows.Forms.OpenFileDialog openFileDialog1;
+        private System.Windows.Forms.Button button6;
     }
 }
 

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Services;
 using Google.Apis.Sheets.v4;
@@ -55,6 +56,27 @@ namespace KakaotalkBot
             appendRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.AppendRequest.ValueInputOptionEnum.RAW;
             appendRequest.Execute();
         }
+
+        public void WriteToSheetAll(string sheetName, List<List<object>> messages)
+        {
+            var service = GetSheetsService();
+
+            var valueRange = new ValueRange();
+            var values = new List<IList<object>>();
+
+            foreach (var msg in messages)
+            {
+                // msg (List<string>)를 object 리스트로 변환
+                values.Add(msg.Cast<object>().ToList());
+            }
+
+            valueRange.Values = values;
+
+            var updateRequest = service.Spreadsheets.Values.Update(valueRange, sheetId, sheetName);
+            updateRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
+            updateRequest.Execute();
+        }
+
 
         public List<List<string>> ReadAllFromSheet(string sheetName)
         {

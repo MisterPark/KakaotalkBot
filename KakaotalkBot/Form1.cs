@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -36,32 +37,10 @@ namespace KakaotalkBot
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GlobalUnlock(IntPtr hMem);
         [DllImport("kernel32.dll", SetLastError = true)]
+
         private static extern IntPtr GlobalFree(IntPtr hMem);
-
-        private const uint GMEM_MOVEABLE = 0x0002;
-
-        const uint MOUSEEVENTF_LEFTDOWN = 0x02;
-        const uint MOUSEEVENTF_LEFTUP = 0x04;
-        const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
-        const uint MOUSEEVENTF_RIGHTUP = 0x0010;
-
-        // 핫키 관련 상수
-        private const int WM_HOTKEY = 0x0312;
-        private const int MOD_ALT = 0x0001;
-        private const int MOD_CONTROL = 0x0002;
-        private const int MOD_SHIFT = 0x0004;
-
-        public const int WM_CLOSE = 0x0010;
-        public const int WM_SETTEXT = 0x000C;
-        public const int WM_KEYDOWN = 0x0100;
-        public const int WM_KEYUP = 0x0101;
-        public const int VK_RETURN = 0x0D;
-
-        private const int WM_USER = 0x0400;
-        private const int EM_SETTEXTEX = WM_USER + 97;
-
-        private const int ST_DEFAULT = 0x0000;
-        private const int ST_KEEPUNDO = 0x0001;
+        [DllImport("user32.dll")]
+        static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -86,6 +65,34 @@ namespace KakaotalkBot
         public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+
+        private const uint GMEM_MOVEABLE = 0x0002;
+
+        const uint MOUSEEVENTF_LEFTDOWN = 0x02;
+        const uint MOUSEEVENTF_LEFTUP = 0x04;
+        const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+        const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+
+        // 핫키 관련 상수
+        private const int WM_HOTKEY = 0x0312;
+        private const int MOD_ALT = 0x0001;
+        private const int MOD_CONTROL = 0x0002;
+        private const int MOD_SHIFT = 0x0004;
+
+        const int WM_CLOSE = 0x0010;
+        const int WM_SETTEXT = 0x000C;
+        const int WM_KEYDOWN = 0x0100;
+        const int WM_KEYUP = 0x0101;
+        const int VK_RETURN = 0x0D;
+        const int VK_SPACE = 0x20;
+
+        private const int WM_USER = 0x0400;
+        private const int EM_SETTEXTEX = WM_USER + 97;
+
+        private const int ST_DEFAULT = 0x0000;
+        private const int ST_KEEPUNDO = 0x0001;
+
 
         [StructLayout(LayoutKind.Sequential)]
         private struct SETTEXTEX
@@ -115,6 +122,10 @@ namespace KakaotalkBot
             public string Keyword;
         }
 
+
+        private Thread thread;
+        private bool isRunning = false;
+
         private System.Windows.Forms.Timer timer;
         private System.Windows.Forms.Timer timer2;
         private System.Windows.Forms.Timer timer3;
@@ -128,46 +139,49 @@ namespace KakaotalkBot
         private Bitmap viceHeadImage;
         private Bitmap listenerImage;
 
-        private GoogleSheetHelper keywordSheet;
-        private Settings settings;
 
-        private List<string> keywords = new List<string>();
-        private List<List<string>> keywordAnswer = new List<List<string>>();
+        private Settings settings;
+        private Database db;
 
         private Queue<Command> commands = new Queue<Command>();
 
         private List<string> chatLog = new List<string>();
-        private int chatIndex = 0;
+        string lastChat = "xx";
         private Random random = new Random();
+
+        private DateTime lastUpdate = DateTime.MinValue;
+
+        CustomTimer soliloquyTimer = new CustomTimer(300000);
+
         public Form1()
         {
             InitializeComponent();
+
+            lastUpdate = DateTime.Now;
 
             settings = Settings.Load();
             Settings.Save(settings);
             textBox2.Text = settings.ApplicationName;
             textBox3.Text = settings.SpreadsheetId;
 
-            keywordSheet = new GoogleSheetHelper(settings.ApplicationName, settings.SpreadsheetId);
-            keywords = GetKeywords();
-            keywordAnswer = GetKeywordList();
+            db = new Database(settings.ApplicationName, settings.SpreadsheetId);
 
-            yesButton = new Bitmap("수락.png");
-            yesButton2 = new Bitmap("수락2.png");
-            noButton = new Bitmap("거절.png");
-            okButton = new Bitmap("확인.png");
+            yesButton = new Bitmap("수락.bmp");
+            yesButton2 = new Bitmap("수락2.bmp");
+            noButton = new Bitmap("거절.bmp");
+            okButton = new Bitmap("확인.bmp");
             okButton2 = new Bitmap("확인2.png");
             hostButton = new Bitmap("진행자.png");
-            headImage = new Bitmap("방장.png");
-            viceHeadImage = new Bitmap("부방장.png");
-            listenerImage = new Bitmap("리스너경계선.png");
+            headImage = new Bitmap("방장.bmp");
+            viceHeadImage = new Bitmap("부방장.bmp");
+            listenerImage = new Bitmap("리스너경계선.bmp");
 
             timer = new System.Windows.Forms.Timer();
             timer.Interval = 500;
             timer.Tick += Timer_Tick;
 
             timer2 = new System.Windows.Forms.Timer();
-            timer2.Interval = 3000;
+            timer2.Interval = 1000;
             timer2.Tick += Timer_Tick2;
 
             timer3 = new System.Windows.Forms.Timer();
@@ -176,6 +190,38 @@ namespace KakaotalkBot
             timer3.Start();
 
             UpdateWindowList();
+
+            thread = new Thread(WorkerThread);
+            thread.Start();
+        }
+
+        private void WorkerThread()
+        {
+            isRunning = true;
+
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
+            long lastTick = stopwatch.ElapsedMilliseconds;
+            long nowTick = stopwatch.ElapsedMilliseconds;
+            long deltaTime = nowTick - lastTick;
+
+            
+
+            while (isRunning)
+            {
+                nowTick = stopwatch.ElapsedMilliseconds;
+                deltaTime = nowTick - lastTick;
+                lastTick = nowTick;
+                Time.DeltaTime = deltaTime;
+
+                ProcessCopyChat();
+                ProcessReset();
+
+                if(soliloquyTimer.Check(deltaTime))
+                {
+                    ProcessComonBot();
+                }
+            }
         }
 
         private List<WindowInfo> GetWindowList()
@@ -222,63 +268,15 @@ namespace KakaotalkBot
                 ListViewItem item = new ListViewItem(strings);
                 item.Tag = window.Handle;
                 listView1.Items.Add(item);
+                //this.Invoke((MethodInvoker)delegate {  });
             }
         }
 
-        private List<List<string>> GetDB()
-        {
-            var db = keywordSheet.ReadAllFromSheet("DB");
-            return db;
-        }
 
-        private List<List<string>> GetKeywordList()
-        {
-            var keywords = keywordSheet.ReadAllFromSheet("키워드");
-            return keywords;
-        }
-
-        private List<string> GetKeywords()
-        {
-            List<string> keywordList = new List<string>();
-            var keywords = keywordSheet.ReadAllFromSheet("키워드");
-            foreach (var row in keywords)
-            {
-                keywordList.Add(row[0]);
-            }
-
-            return keywordList;
-        }
-
-        private string GetAnswer(string keyword)
-        {
-            var keywords = keywordAnswer;
-            foreach (var row in keywords)
-            {
-                if (row[0] == keyword)
-                {
-                    return row[1];
-                }
-            }
-
-            return null;
-        }
-
-        private string[] GetAnswers(string keyword)
-        {
-            var keywords = keywordAnswer;
-            foreach (var row in keywords)
-            {
-                if (row[0] == keyword)
-                {
-                    return row[1].Split(new string[] { "\n" }, StringSplitOptions.RemoveEmptyEntries);
-                }
-            }
-
-            return null;
-        }
 
         private void Timer_Tick(object sender, EventArgs e)
         {
+            //JustSpaceKeyDown();
             DetectScreen();
             DetectScreen2();
         }
@@ -291,9 +289,8 @@ namespace KakaotalkBot
 
         private void Timer_Tick3(object sender, EventArgs e)
         {
-            keywordSheet = new GoogleSheetHelper(settings.ApplicationName, settings.SpreadsheetId);
-            keywords = GetKeywords();
-            keywordAnswer = GetKeywordList();
+            db.UpdateCommands();
+            db.UpdateUserTable();
         }
 
         public static void LaunchKakaoTalk()
@@ -330,16 +327,16 @@ namespace KakaotalkBot
 
 
             SendMessage(hwndEdit3, WM_SETTEXT, 0, " ");
-            Thread.Sleep(300);
+            //Thread.Sleep(300);
             SendReturn(hwndEdit3);
-            Thread.Sleep(300);
+            //Thread.Sleep(300);
 
             // 3. 검색어 입력
             SendMessage(hwndEdit3, WM_SETTEXT, 0, roomName);
-            Thread.Sleep(500); // 안정성 확보
+            //Thread.Sleep(500); // 안정성 확보
             // 4. 엔터키 전송 (채팅방 열기)
             SendReturn(hwndEdit3);
-            Thread.Sleep(100);
+            //Thread.Sleep(100);
         }
 
         public static void CloseWindow(IntPtr hwnd)
@@ -348,34 +345,6 @@ namespace KakaotalkBot
             {
                 PostMessage(hwnd, WM_CLOSE, 0, 0);
             }
-        }
-        private string CopyChatroomText(string windowName)
-        {
-            IntPtr hwndMain = FindWindow(null, windowName);
-            IntPtr hwndList = FindWindowEx(hwndMain, IntPtr.Zero, "EVA_VH_ListControl_Dblclk", null);
-
-            if (hwndList == IntPtr.Zero) return "";
-
-            // 채팅 전체 선택 후 복사 (Ctrl+A → Ctrl+C)
-            SendCtrlKey(hwndList, 'A');
-            Thread.Sleep(100);
-            SendCtrlKey(hwndList, 'C');
-            Thread.Sleep(100);
-
-            try
-            {
-                IDataObject iData = Clipboard.GetDataObject();
-                if (iData.GetDataPresent(DataFormats.Text))
-                {
-                    return (string)iData.GetData(DataFormats.Text);
-                }
-            }
-            catch (Exception ex)
-            {
-                return $"클립보드 오류: {ex.Message}";
-            }
-
-            return "";
         }
         private string CopyChatroomText(IntPtr hwndMain)
         {
@@ -390,12 +359,13 @@ namespace KakaotalkBot
             SendCtrlKey(hwndList, 'A');
             Thread.Sleep(100);
             SendCtrlKey(hwndList, 'c');
-            Thread.Sleep(300);
+            Thread.Sleep(200);
 
             string text = string.Empty;
             try
             {
-                text = Clipboard.GetText();
+                Invoke((MethodInvoker)delegate { text = Clipboard.GetText(); });
+
             }
             catch (Exception e)
             {
@@ -410,50 +380,28 @@ namespace KakaotalkBot
             SendKeys.SendWait("^" + key); // ^ == Ctrl
         }
 
-        private void SetRichEditText(IntPtr richEditHandle, string text)
-        {
-            // SETTEXTEX 구조체 생성
-            SETTEXTEX setTextEx = new SETTEXTEX
-            {
-                flags = ST_DEFAULT,
-                codepage = 1200 // UTF-16 (Unicode)
-            };
-
-            IntPtr ptrStruct = Marshal.AllocHGlobal(Marshal.SizeOf(setTextEx));
-            Marshal.StructureToPtr(setTextEx, ptrStruct, false);
-
-            // 문자열 포인터 확보
-            IntPtr hGlobal = GlobalAlloc(GMEM_MOVEABLE, (UIntPtr)((text.Length + 1) * 2));
-            IntPtr ptrText = GlobalLock(hGlobal);
-            Marshal.Copy(text.ToCharArray(), 0, ptrText, text.Length);
-            Marshal.WriteInt16(ptrText, text.Length * 2, 0); // null terminator
-            GlobalUnlock(hGlobal);
-
-            // 메시지 전송
-            SendMessage(richEditHandle, EM_SETTEXTEX, ptrStruct, hGlobal);
-
-            // 메모리 해제
-            Marshal.FreeHGlobal(ptrStruct);
-            GlobalFree(hGlobal);
-        }
-
         public void SendTextToChatroom(string chatroomName, string message)
         {
+            soliloquyTimer.Reset();
+
             IntPtr hwndMain = FindWindow(null, chatroomName);
             IntPtr hwndEdit = FindWindowEx(hwndMain, IntPtr.Zero, "RichEdit50W", null);
 
             try
             {
-                Clipboard.SetText(message);
+                Invoke((MethodInvoker)delegate { Clipboard.SetText(message); });
 
                 SetForegroundWindow(hwndMain);
-                Thread.Sleep(300);
+                Thread.Sleep(100);
                 SendCtrlKey(hwndEdit, 'v');
 
                 //SendMessage(hwndEdit, WM_SETTEXT, 0, message);
                 //SetRichEditText(hwndEdit, message);
-                Thread.Sleep(300);
+                //Thread.Sleep(300);
                 SendReturn(hwndEdit);
+                Thread.Sleep(300);
+                //SendReturn(hwndEdit);
+                //SendReturn(hwndEdit);
             }
             catch (Exception e)
             {
@@ -462,17 +410,19 @@ namespace KakaotalkBot
         }
         public void SendReturn(IntPtr hwnd)
         {
-            PostMessage(hwnd, WM_KEYDOWN, VK_RETURN, 0);
-            Thread.Sleep(100);
-            PostMessage(hwnd, WM_KEYUP, VK_RETURN, 0);
-            Thread.Sleep(100);
+            //    PostMessage(hwnd, WM_KEYDOWN, VK_RETURN, 0);
+            //    //Thread.Sleep(100);
+            //    PostMessage(hwnd, WM_KEYUP, VK_RETURN, 0);
+            //Thread.Sleep(100);
+
+            SendKeys.SendWait("~"); // ^ == Ctrl
         }
 
         private void ProcessCopyChat()
         {
             if (string.IsNullOrEmpty(textBox1.Text)) return;
-
-            ListViewItem item = listView1.FindItemWithText(textBox1.Text);
+            ListViewItem item = null;
+            this.Invoke((MethodInvoker)delegate { item = listView1.FindItemWithText(textBox1.Text); });
             if (item == null)
             {
                 OpenChatRoom(textBox1.Text);
@@ -483,17 +433,19 @@ namespace KakaotalkBot
             string chat = CopyChatroomText(handle);
             string[] lines = chat.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
 
-            for (int i = 0; i < lines.Length; i++)
-            {
-                string line = lines[i];
+            chatLog = lines.Where(x => !string.IsNullOrEmpty(x)).ToList();
 
-                if (chatLog.Contains(line) == false)
+            int idx = 0;
+            for (int i = chatLog.Count - 1; i >= 0; i--)
+            {
+                if (chatLog[i] == lastChat)
                 {
-                    chatLog.Add(line);
+                    idx = i;
+                    break;
                 }
             }
 
-            for (int i = chatIndex; i < chatLog.Count; i++)
+            for (int i = idx + 1; i < chatLog.Count; i++)
             {
                 string line = chatLog[i];
                 if (!line.StartsWith("[")) continue;
@@ -507,7 +459,7 @@ namespace KakaotalkBot
                     string message = line.Substring(secondClose + 2).Trim();
 
                     // 키워드 포함 여부 검사
-                    if (keywords.Any(k => message == k))
+                    if (db.Keywords.Any(k => message.StartsWith(k)))
                     {
                         if (string.IsNullOrEmpty(nickname) == false)
                         {
@@ -515,14 +467,62 @@ namespace KakaotalkBot
                         }
                     }
                 }
-                chatIndex++;
+            }
+
+            if (chatLog.Count > 0)
+            {
+                lastChat = chatLog[chatLog.Count - 1];
             }
 
             ProcessCommand();
 
-            richTextBox1.Text = string.Join("\n", chatLog);
-            richTextBox1.SelectionStart = richTextBox1.TextLength;
-            richTextBox1.ScrollToCaret();
+            this.Invoke((MethodInvoker)delegate
+            {
+                richTextBox1.Text = string.Join("\n", chatLog);
+
+            });
+            this.Invoke((MethodInvoker)delegate
+            {
+                richTextBox1.SelectionStart = richTextBox1.TextLength;
+
+            });
+            this.Invoke((MethodInvoker)delegate
+            {
+                richTextBox1.ScrollToCaret();
+
+            });
+        }
+
+        private void ProcessReset()
+        {
+            if (lastUpdate.Day != DateTime.Now.Day)
+            {
+                lastUpdate = DateTime.Now;
+                db.ResetAttendance();
+            }
+        }
+
+        private void ProcessComonBot()
+        {
+            string[] answers = db.GetAnswers("/코몽봇");
+
+            int rand = random.Next(0, answers.Length);
+            string answer = answers[rand];
+
+            if (string.IsNullOrEmpty(answer) == false)
+            {
+                SendTextToChatroom(textBox1.Text, $"{answer}");
+            }
+        }
+
+        void RemoveUntilAndIncludingTarget(List<string> list, string target)
+        {
+            int idx = list.IndexOf(target);
+            if (idx >= 0)
+            {
+                // 0 ~ idx까지 삭제 (타겟 포함)
+                list.RemoveRange(0, idx);
+            }
         }
 
         private void ProcessKeyword(string nickname, string message)
@@ -542,27 +542,54 @@ namespace KakaotalkBot
 
             Command command = commands.Dequeue();
 
-            if (command.Keyword == "/명령어")
+            //string answer = GetAnswer(command.Keyword);
+
+            //if (string.IsNullOrEmpty(answer) == false)
+            //{
+            //    SendTextToChatroom(textBox1.Text, $"{answer}");
+            //}
+
+            if (command.Keyword == "/?" || command.Keyword == "/훈장")
             {
-                string answer = GetAnswer(command.Keyword);
+                string answer = db.GetAnswer(command.Keyword);
 
                 if (string.IsNullOrEmpty(answer) == false)
                 {
-                    SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님의 명령\n{answer}");
+                    SendTextToChatroom(textBox1.Text, $"{answer}");
                 }
             }
             else if (command.Keyword == "/출첵")
             {
-                string answer = GetAnswer(command.Keyword);
+                string answer = db.GetAnswer(command.Keyword);
 
                 if (string.IsNullOrEmpty(answer) == false)
                 {
-                    SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님의 명령\n{answer}");
+                    if (db.CheckAttendance(command.Nickname))
+                    {
+                        SendTextToChatroom(textBox1.Text, $"이미 출석한 유저입니다.");
+                    }
+                    else
+                    {
+                        SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님이 {answer}\n+10포인트");
+
+                    }
+                }
+            }
+            else if (command.Keyword.StartsWith("/조회"))
+            {
+                if (command.Keyword.Length > 4)
+                {
+                    string param = command.Keyword.Substring(4);
+                    param = param.Replace("@", "");
+                    if (db.FindUser(param, out User user))
+                    {
+                        SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n=================");
+                    }
                 }
             }
             else
             {
-                string[] answers = GetAnswers(command.Keyword);
+                string[] answers = db.GetAnswers(command.Keyword);
 
                 int rand = random.Next(0, answers.Length);
                 string answer = answers[rand];
@@ -601,8 +628,6 @@ namespace KakaotalkBot
                 }
                 return true; // 계속 열거
             }, IntPtr.Zero);
-
-            //richTextBox1.Text = sb.ToString();
 
             return handle;
         }
@@ -747,7 +772,6 @@ namespace KakaotalkBot
                 }
             }
         }
-
         private byte[] GetPixelData(Bitmap bmp, out int stride)
         {
             Rectangle rect = new Rectangle(0, 0, bmp.Width, bmp.Height);
@@ -762,7 +786,6 @@ namespace KakaotalkBot
 
             return rgbValues;
         }
-
         public bool FindImage(Bitmap source, Bitmap template, ref Point point, double error = 0.01)
         {
             // 이미지 LockBits
@@ -793,6 +816,7 @@ namespace KakaotalkBot
 
 
             // 슬라이딩 윈도우 매칭
+
             for (int y = 0; y <= source.Height - tplH; y++)
             {
                 for (int x = 0; x <= source.Width - tplW; x++)
@@ -802,13 +826,11 @@ namespace KakaotalkBot
                         point = new Point(x, y);
                         return true;
                     }
-
                 }
             }
 
             return false;
         }
-
         private bool MatchImageInner(byte[] srcBytes, byte[] tplBytes, int tplW, int tplH, int srcStride, int tplStride, int srcX, int srcY, double error = 0.01)
         {
             int matchPixelCount = 0;
@@ -873,13 +895,11 @@ namespace KakaotalkBot
             return true;
         }
 
-
         private void ClickLeft()
         {
             mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
             mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
         }
-
         private void ClickRight()
         {
             mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, UIntPtr.Zero);
@@ -929,18 +949,15 @@ namespace KakaotalkBot
             {
                 timer.Stop();
                 button1.BackColor = Color.Red;
+                button2.Text = "시작";
             }
             else
             {
                 timer.Start();
                 button1.BackColor = Color.Green;
+                button2.Text = "실행중...";
             }
 
-        }
-
-        private void button3_Click(object sender, EventArgs e)
-        {
-            //pictureBox1.Image.Save("Screenshot.png");
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -951,6 +968,13 @@ namespace KakaotalkBot
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
+            timer.Stop();
+            timer2.Stop();
+            timer3.Stop();
+
+            isRunning = false;
+            thread.Join();
+
             UnregisterHotKey(this.Handle, 2);
             UnregisterHotKey(this.Handle, 1);
             Settings.Save(settings);
@@ -962,11 +986,13 @@ namespace KakaotalkBot
             {
                 timer2.Stop();
                 button2.BackColor = Color.Red;
+                button2.Text = "시작";
             }
             else
             {
                 timer2.Start();
                 button2.BackColor = Color.Green;
+                button2.Text = "실행중...";
             }
         }
 
@@ -978,9 +1004,51 @@ namespace KakaotalkBot
             textBox1.Text = roomName;
         }
 
-        private void button3_Click_1(object sender, EventArgs e)
+        private void button3_Click(object sender, EventArgs e)
         {
-            SendTextToChatroom(textBox1.Text, $"앙 기모띠");
+            //SendTextToChatroom(textBox1.Text, $"앙 기모띠");
+            UpdateWindowList();
+        }
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+
+            //string edbPath = textBox4.Text;
+            //string outputPath = textBox5.Text;
+            //string userId = textBox6.Text;
+            //byte[] hardcodedKey = new byte[]
+            //{
+            //    0x4B, 0x61, 0x6B, 0x61, 0x6F, 0x2D, 0x54, 0x61, 0x6C, 0x6B,
+            //    0x5F, 0x44, 0x42, 0x5F, 0x4B, 0x65  // ASCII로: "Kakao-Talk_DB_Ke"
+            //};
+
+            //try
+            //{
+            //    KakaoTalkDecryptor.DecryptKakaoEdb(edbPath, outputPath, userId, hardcodedKey);
+            //    MessageBox.Show("복호화 완료");
+            //}
+            //catch (Exception ex)
+            //{
+            //    MessageBox.Show("오류: " + ex.Message);
+            //}
+        }
+
+        private void button5_Click(object sender, EventArgs e)
+        {
+            if (openFileDialog1.ShowDialog() == DialogResult.OK)
+            {
+                string fullPath = openFileDialog1.FileName;
+                textBox4.Text = fullPath;
+                string path = Path.GetDirectoryName(fullPath);
+                string fileName = Path.GetFileNameWithoutExtension(fullPath) + "_decrypted.db";
+
+
+                textBox5.Text = Path.Combine(path, fileName);
+            }
+        }
+
+        private void button6_Click(object sender, EventArgs e)
+        {
         }
     }
 }
