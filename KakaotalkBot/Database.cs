@@ -140,7 +140,7 @@ namespace KakaotalkBot
             var keywords = commands;
             foreach (var row in keywords)
             {
-                if (row[0] == keyword)
+                if (row[0] == keyword && row.Count > 1) 
                 {
                     return row[1];
                 }
@@ -154,7 +154,7 @@ namespace KakaotalkBot
             var keywords = commands;
             foreach (var row in keywords)
             {
-                if (row[0] == keyword)
+                if (row[0] == keyword && row.Count > 1)
                 {
                     return row[1].Split(new string[] { "\n" }, StringSplitOptions.RemoveEmptyEntries);
                 }

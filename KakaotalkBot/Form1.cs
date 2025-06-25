@@ -432,10 +432,17 @@ namespace KakaotalkBot
 
             string chat = CopyChatroomText(handle);
             string[] lines = chat.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            bool isFirstOpen = chatLog.Count == 0;
 
             chatLog = lines.Where(x => !string.IsNullOrEmpty(x)).ToList();
 
-            int idx = 0;
+            if (isFirstOpen && chatLog.Count > 0)
+            {
+                lastChat = chatLog.Last();
+                return;
+            }
+
+            int idx = chatLog.Count-1;
             for (int i = chatLog.Count - 1; i >= 0; i--)
             {
                 if (chatLog[i] == lastChat)
@@ -590,6 +597,10 @@ namespace KakaotalkBot
             else
             {
                 string[] answers = db.GetAnswers(command.Keyword);
+                if(answers == null || answers.Length == 0)
+                {
+                    return;
+                }
 
                 int rand = random.Next(0, answers.Length);
                 string answer = answers[rand];

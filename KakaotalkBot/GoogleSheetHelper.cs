@@ -72,9 +72,15 @@ namespace KakaotalkBot
 
             valueRange.Values = values;
 
-            var updateRequest = service.Spreadsheets.Values.Update(valueRange, sheetId, sheetName);
-            updateRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
-            updateRequest.Execute();
+            try
+            {
+                var updateRequest = service.Spreadsheets.Values.Update(valueRange, sheetId, sheetName);
+                updateRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
+                updateRequest.Execute();
+            }
+            catch (Google.GoogleApiException e)
+            {
+            }
         }
 
 
