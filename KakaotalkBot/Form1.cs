@@ -152,6 +152,7 @@ namespace KakaotalkBot
         private DateTime lastUpdate = DateTime.MinValue;
 
         CustomTimer soliloquyTimer = new CustomTimer(300000);
+        CustomTimer newsTimer = new CustomTimer(1800000);
 
         public Form1()
         {
@@ -220,6 +221,11 @@ namespace KakaotalkBot
                 if(soliloquyTimer.Check(deltaTime))
                 {
                     ProcessComonBot();
+                }
+
+                if (newsTimer.Check(deltaTime))
+                {
+                    ProcessNews();
                 }
             }
         }
@@ -291,6 +297,7 @@ namespace KakaotalkBot
         {
             db.UpdateCommands();
             db.UpdateUserTable();
+            News.Update();
         }
 
         public static void LaunchKakaoTalk()
@@ -522,6 +529,11 @@ namespace KakaotalkBot
             }
         }
 
+        private void ProcessNews()
+        {
+            SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
+        }
+
         void RemoveUntilAndIncludingTarget(List<string> list, string target)
         {
             int idx = list.IndexOf(target);
@@ -556,7 +568,7 @@ namespace KakaotalkBot
             //    SendTextToChatroom(textBox1.Text, $"{answer}");
             //}
 
-            if (command.Keyword == "/?" || command.Keyword == "/훈장")
+            if (command.Keyword == "/?" || command.Keyword == "/훈장" || command.Keyword == "/공지사항" || command.Keyword == "/패치노트")
             {
                 string answer = db.GetAnswer(command.Keyword);
 
@@ -593,6 +605,10 @@ namespace KakaotalkBot
                         SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n=================");
                     }
                 }
+            }
+            else if(command.Keyword.StartsWith("/정치뉴스"))
+            {
+                SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
             }
             else
             {
@@ -1060,6 +1076,7 @@ namespace KakaotalkBot
 
         private void button6_Click(object sender, EventArgs e)
         {
+            SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
         }
     }
 }
