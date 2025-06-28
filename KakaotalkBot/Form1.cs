@@ -596,13 +596,28 @@ namespace KakaotalkBot
             }
             else if (command.Keyword.StartsWith("/조회"))
             {
-                if (command.Keyword.Length > 4)
+                if(command.Keyword == "/조회")
+                {
+                    if (db.FindUser(command.Nickname, out User user))
+                    {
+                        SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n=================");
+                    }
+                    else
+                    {
+                        SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
+                    }
+                }
+                else if (command.Keyword.Length > 4)
                 {
                     string param = command.Keyword.Substring(4);
                     param = param.Replace("@", "");
                     if (db.FindUser(param, out User user))
                     {
                         SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n=================");
+                    }
+                    else
+                    {
+                        SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                     }
                 }
             }
