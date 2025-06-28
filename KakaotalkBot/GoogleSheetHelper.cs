@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Google.Apis.Auth.OAuth2;
@@ -88,11 +89,19 @@ namespace KakaotalkBot
         {
             var service = GetSheetsService();
             var range = $"{sheetName}"; // 전체 시트 범위
+            ValueRange response = null;
+            IList<IList<object>> values = null;
+            try
+            {
+                var request = service.Spreadsheets.Values.Get(sheetId, range);
+                response = request.Execute();
+                values = response.Values;
+            }
+            catch (Exception e)
+            {
 
-            var request = service.Spreadsheets.Values.Get(sheetId, range);
-            var response = request.Execute();
-            var values = response.Values;
-
+            }
+            
             List<List<string>> result = new List<List<string>>();
 
             if (values != null && values.Count > 0)
