@@ -48,8 +48,8 @@ namespace KakaotalkBot
             articles.Clear();
             for (int i = 0; i < 6; i++)
             {
-                var node = doc.DocumentNode.SelectSingleNode($"/html/body/div/div[2]/div[2]/div[2]/div[2]/div/div[1]/div[1]/ul/li[{i + 1}]/div/div/div[2]/a");
-                var strong = doc.DocumentNode.SelectSingleNode($"/html/body/div/div[2]/div[2]/div[2]/div[2]/div/div[1]/div[1]/ul/li[{i + 1}]/div/div/div[2]/a/strong");
+                var node = doc.DocumentNode.SelectSingleNode($"/html/body/div/div[2]/div[2]/div[2]/div[2]/div/div[1]/div[1]/ul/li[{i+1}]/div/div/div[2]/a");
+                var strong = doc.DocumentNode.SelectSingleNode($"/html/body/div/div[2]/div[2]/div[2]/div[2]/div/div[1]/div[1]/ul/li[{i+1}]/div/div/div[2]/a/strong");
 
                 string link = string.Empty;
                 string headline = string.Empty;
