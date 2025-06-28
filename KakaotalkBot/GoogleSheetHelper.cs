@@ -18,6 +18,8 @@ namespace KakaotalkBot
         private string sheetName = string.Empty;
         private string sheetId = string.Empty;
 
+        private object lockObject = new object();
+
         public GoogleSheetHelper(string applicationName, string sheetId)
         {
             this.applicationName = applicationName;
@@ -60,50 +62,58 @@ namespace KakaotalkBot
 
         public void WriteToSheetAll(string sheetName, List<List<object>> messages)
         {
-            var service = GetSheetsService();
-
-            var valueRange = new ValueRange();
-            var values = new List<IList<object>>();
-
-            foreach (var msg in messages)
+            lock (lockObject)
             {
-                // msg (List<string>)를 object 리스트로 변환
-                values.Add(msg.Cast<object>().ToList());
-            }
+                var service = GetSheetsService();
 
-            valueRange.Values = values;
+                var valueRange = new ValueRange();
+                var values = new List<IList<object>>();
 
-            try
-            {
-                var updateRequest = service.Spreadsheets.Values.Update(valueRange, sheetId, sheetName);
-                updateRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
-                updateRequest.Execute();
+                foreach (var msg in messages)
+                {
+                    // msg (List<string>)를 object 리스트로 변환
+                    values.Add(msg.Cast<object>().ToList());
+                }
+
+                valueRange.Values = values;
+
+                try
+                {
+                    var updateRequest = service.Spreadsheets.Values.Update(valueRange, sheetId, sheetName);
+                    updateRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
+                    updateRequest.Execute();
+                }
+                catch (Google.GoogleApiException e)
+                {
+                }
             }
-            catch (Google.GoogleApiException e)
-            {
-            }
+            
         }
 
 
         public List<List<string>> ReadAllFromSheet(string sheetName)
         {
-            var service = GetSheetsService();
-            var range = $"{sheetName}"; // 전체 시트 범위
-            ValueRange response = null;
+            List<List<string>> result = new List<List<string>>();
             IList<IList<object>> values = null;
-            try
-            {
-                var request = service.Spreadsheets.Values.Get(sheetId, range);
-                response = request.Execute();
-                values = response.Values;
-            }
-            catch (Exception e)
-            {
 
+            lock (lockObject)
+            {
+                var service = GetSheetsService();
+                var range = $"{sheetName}"; // 전체 시트 범위
+                ValueRange response = null;
+                
+                try
+                {
+                    var request = service.Spreadsheets.Values.Get(sheetId, range);
+                    response = request.Execute();
+                    values = response.Values;
+                }
+                catch (Exception e)
+                {
+
+                }
             }
             
-            List<List<string>> result = new List<List<string>>();
-
             if (values != null && values.Count > 0)
             {
                 foreach (var row in values)
