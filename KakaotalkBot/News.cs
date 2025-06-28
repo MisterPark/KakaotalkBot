@@ -1,10 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text;
-using System.Threading.Tasks;
+using HtmlAgilityPack;
 
 namespace KakaotalkBot
 {
@@ -37,45 +35,37 @@ namespace KakaotalkBot
 
         private static void UpdatePoliticsTop6()
         {
-            string url = "https://news.naver.com/breakingnews/section/100/264";
+            string url = "https://news.naver.com/breakingnews/section/100/269";
             var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
 
             // 동기적으로 HTML 가져오기
             var html = httpClient.GetStringAsync(url).GetAwaiter().GetResult();
 
-            int idx = html.IndexOf("SECTION_ARTICLE_LIST_FOR_LATEST");
-            string sub = html.Substring(idx);
-            string[] split = sub.Split(new string[] { "<", ">" }, StringSplitOptions.RemoveEmptyEntries);
-            List<string> links = split.Where(x => x.StartsWith("a href=")).Select(x =>
-            {
-                string link = x.Split(new char[] { '\"' })[1];
-                return link;
-            }).ToList();
-
-            List<string> top6 = new List<string>();
-            for (int i = 0; i < 16; i++)
-            {
-                if (i % 3 == 0)
-                {
-                    top6.Add(links[i]);
-                }
-            }
-
-            List<string> headlines = sub.Split(new string[] { "<" }, StringSplitOptions.RemoveEmptyEntries)
-                .Where(x => x.StartsWith("strong class=\"sa_text_strong\">"))
-                .Select(x =>
-                {
-                    string replaced = x.Replace("strong class=\"sa_text_strong\">", "");
-                    return WebUtility.HtmlDecode(replaced);
-                }).ToList();
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
 
             articles.Clear();
             for (int i = 0; i < 6; i++)
             {
+                var node = doc.DocumentNode.SelectSingleNode($"/html/body/div/div[2]/div[2]/div[2]/div[2]/div/div[1]/div[1]/ul/li[{i + 1}]/div/div/div[2]/a");
+                var strong = doc.DocumentNode.SelectSingleNode($"/html/body/div/div[2]/div[2]/div[2]/div[2]/div/div[1]/div[1]/ul/li[{i + 1}]/div/div/div[2]/a/strong");
+
+                string link = string.Empty;
+                string headline = string.Empty;
+
+                if (node != null)
+                {
+                    link = node.GetAttributeValue("href", null);
+                }
+                if (strong != null)
+                {
+                    headline = WebUtility.HtmlDecode(strong.InnerText);
+                }
+
                 Article article = new Article();
-                article.Headline =  headlines[i];
-                article.Link = links[i];
+                article.Headline = headline;
+                article.Link = link;
                 articles.Add(article);
             }
         }
