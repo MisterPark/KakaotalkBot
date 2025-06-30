@@ -589,7 +589,15 @@ namespace KakaotalkBot
                     }
                     else
                     {
-                        SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님이 {answer}\n+10포인트");
+                        if (db.FindUser(command.Nickname, out User user))
+                        {
+                            SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님이 {answer}\n+10포인트\n(현재 포인트: {user.Point})");
+                        }
+                        else
+                        {
+                            SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님이 {answer}\n+10포인트");
+                        }
+                        
 
                     }
                 }
