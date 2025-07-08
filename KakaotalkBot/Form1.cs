@@ -629,6 +629,123 @@ namespace KakaotalkBot
                     }
                 }
             }
+            else if (command.Keyword.StartsWith("/랭킹"))
+            {
+                if (command.Keyword == "/랭킹")
+                {
+                    StringBuilder sb = new StringBuilder();
+                    int beforeRank = 1;
+                    int beforePop = 0;
+                    List<User> rank = db.GetPopularityRank();
+
+                    sb.AppendLine("[유저랭킹]");
+                    sb.Append("\r\n");
+                    for (int i = 0; i < rank.Count; i++)
+                    {
+                        int currentPop = rank[i].Popularity;
+                        if (currentPop != beforePop)
+                        {
+                            beforeRank = i + 1;
+                        }
+
+                        string emoji = string.Empty;
+                        if(beforeRank == 1)
+                        {
+                            emoji = "🥇";
+                        }
+                        else if(beforeRank == 2)
+                        {
+                            emoji = "🥈";
+                        }
+                        else if (beforeRank == 2)
+                        {
+                            emoji = "🥉";
+                        }
+
+                        sb.AppendLine($"{emoji}{beforeRank}위 {rank[i].Nickname}");
+                    }
+
+                    SendTextToChatroom(textBox1.Text, sb.ToString());
+                }
+            }
+            else if (command.Keyword.StartsWith("/좋아"))
+            {
+                string[] arr = command.Keyword.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (arr[0] != "/좋아") return;
+                if (arr.Length < 2) return;
+
+                string nick = arr[1].Replace("@", "");
+                if (command.Nickname == nick) return;
+
+                int point = 10;
+                if (arr.Length > 2)
+                {
+                    if (int.TryParse(arr[2], out int p))
+                    {
+                        point = p;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+
+                if (db.FindUser(command.Nickname, out User a))
+                {
+                    if (db.FindUser(nick, out User b))
+                    {
+                        if (a.Point < point)
+                        {
+                            SendTextToChatroom(textBox1.Text, $"포인트가 부족합니다.\n남은 포인트: {a.Point}");
+                        }
+                        else
+                        {
+                            a.Point -= point;
+                            b.Popularity += point;
+                            SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👍좋아요.\n인기도 {point}점 상승");
+                        }
+                    }
+                }
+            }
+            else if (command.Keyword.StartsWith("/싫어"))
+            {
+                string[] arr = command.Keyword.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (arr[0] != "/싫어") return;
+                if (arr.Length < 2) return;
+
+                string nick = arr[1].Replace("@", "");
+                if (command.Nickname == nick) return;
+
+                int point = 10;
+                if (arr.Length > 2)
+                {
+                    if (int.TryParse(arr[2], out int p))
+                    {
+                        point = p;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+
+                if (db.FindUser(command.Nickname, out User a))
+                {
+                    if (db.FindUser(nick, out User b))
+                    {
+                        if (a.Point < point)
+                        {
+                            SendTextToChatroom(textBox1.Text, $"포인트가 부족합니다.\n남은 포인트: {a.Point}");
+                        }
+                        else
+                        {
+                            a.Point -= point;
+                            b.Popularity -= point;
+                            SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👎싫어요.\n인기도 {point}점 하락");
+                        }
+                    }
+                }
+            }
             else if(command.Keyword.StartsWith("/정치뉴스"))
             {
                 SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");

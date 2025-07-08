@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace KakaotalkBot
 {
@@ -105,6 +106,11 @@ namespace KakaotalkBot
             }
 
             return false;
+        }
+
+        public List<User> GetPopularityRank()
+        {
+            return userTable.OrderByDescending(x => x.Popularity).ToList();
         }
 
         private List<User> GetUserTable()
