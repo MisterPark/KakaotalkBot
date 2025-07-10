@@ -608,7 +608,7 @@ namespace KakaotalkBot
                 {
                     if (db.FindUser(command.Nickname, out User user))
                     {
-                        SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n=================");
+                        SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n=================");
                     }
                     else
                     {
@@ -621,7 +621,7 @@ namespace KakaotalkBot
                     param = param.Replace("@", "");
                     if (db.FindUser(param, out User user))
                     {
-                        SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n=================");
+                        SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n=================");
                     }
                     else
                     {
@@ -633,13 +633,16 @@ namespace KakaotalkBot
             {
                 if (command.Keyword == "/랭킹")
                 {
+                    string answer = db.GetAnswer(command.Keyword);
+
+                    if (string.IsNullOrEmpty(answer)) return;
+
                     StringBuilder sb = new StringBuilder();
                     int beforeRank = 1;
                     int beforePop = 0;
                     List<User> rank = db.GetPopularityRank();
 
-                    sb.AppendLine("[유저랭킹]");
-                    sb.Append("\r\n");
+                    sb.AppendLine(answer);
                     for (int i = 0; i < rank.Count; i++)
                     {
                         int currentPop = rank[i].Popularity;
@@ -657,12 +660,14 @@ namespace KakaotalkBot
                         {
                             emoji = "🥈";
                         }
-                        else if (beforeRank == 2)
+                        else if (beforeRank == 3)
                         {
                             emoji = "🥉";
                         }
 
-                        sb.AppendLine($"{emoji}{beforeRank}위 {rank[i].Nickname}");
+                        sb.AppendLine($"{emoji}{beforeRank}위 {rank[i].Nickname} {rank[i].Popularity}");
+
+                        beforePop = currentPop;
                     }
 
                     SendTextToChatroom(textBox1.Text, sb.ToString());
