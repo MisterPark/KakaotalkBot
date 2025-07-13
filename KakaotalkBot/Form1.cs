@@ -206,7 +206,7 @@ namespace KakaotalkBot
             long nowTick = stopwatch.ElapsedMilliseconds;
             long deltaTime = nowTick - lastTick;
 
-            
+
 
             while (isRunning)
             {
@@ -218,7 +218,7 @@ namespace KakaotalkBot
                 ProcessCopyChat();
                 ProcessReset();
 
-                if(soliloquyTimer.Check(deltaTime))
+                if (soliloquyTimer.Check(deltaTime))
                 {
                     ProcessComonBot();
                 }
@@ -449,7 +449,7 @@ namespace KakaotalkBot
                 return;
             }
 
-            int idx = chatLog.Count-1;
+            int idx = chatLog.Count - 1;
             for (int i = chatLog.Count - 1; i >= 0; i--)
             {
                 if (chatLog[i] == lastChat)
@@ -597,14 +597,14 @@ namespace KakaotalkBot
                         {
                             SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님이 {answer}\n+10포인트");
                         }
-                        
+
 
                     }
                 }
             }
             else if (command.Keyword.StartsWith("/조회"))
             {
-                if(command.Keyword == "/조회")
+                if (command.Keyword == "/조회")
                 {
                     if (db.FindUser(command.Nickname, out User user))
                     {
@@ -652,11 +652,11 @@ namespace KakaotalkBot
                         }
 
                         string emoji = string.Empty;
-                        if(beforeRank == 1)
+                        if (beforeRank == 1)
                         {
                             emoji = "🥇";
                         }
-                        else if(beforeRank == 2)
+                        else if (beforeRank == 2)
                         {
                             emoji = "🥈";
                         }
@@ -680,7 +680,11 @@ namespace KakaotalkBot
                 if (arr.Length < 2) return;
 
                 string nick = arr[1].Replace("@", "");
-                if (command.Nickname == nick) return;
+                if (command.Nickname == nick)
+                {
+                    SendTextToChatroom(textBox1.Text, $"자신에게 할 수 없는 명령입니다.");
+                    return;
+                }
 
                 int point = 10;
                 if (arr.Length > 2)
@@ -691,6 +695,7 @@ namespace KakaotalkBot
                     }
                     else
                     {
+                        SendTextToChatroom(textBox1.Text, $"세번째 인자가 숫자가 아니거나 범위를 초과하였습니다.");
                         return;
                     }
                 }
@@ -710,6 +715,14 @@ namespace KakaotalkBot
                             SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👍좋아요.\n인기도 {point}점 상승");
                         }
                     }
+                    else
+                    {
+                        SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
+                    }
+                }
+                else
+                {
+                    SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                 }
             }
             else if (command.Keyword.StartsWith("/싫어"))
@@ -719,7 +732,11 @@ namespace KakaotalkBot
                 if (arr.Length < 2) return;
 
                 string nick = arr[1].Replace("@", "");
-                if (command.Nickname == nick) return;
+                if (command.Nickname == nick)
+                {
+                    SendTextToChatroom(textBox1.Text, $"자신에게 할 수 없는 명령입니다.");
+                    return;
+                }
 
                 int point = 10;
                 if (arr.Length > 2)
@@ -730,6 +747,7 @@ namespace KakaotalkBot
                     }
                     else
                     {
+                        SendTextToChatroom(textBox1.Text, $"세번째 인자가 숫자가 아니거나 범위를 초과하였습니다.");
                         return;
                     }
                 }
@@ -749,16 +767,24 @@ namespace KakaotalkBot
                             SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👎싫어요.\n인기도 {point}점 하락");
                         }
                     }
+                    else
+                    {
+                        SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
+                    }
+                }
+                else
+                {
+                    SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                 }
             }
-            else if(command.Keyword.StartsWith("/정치뉴스"))
+            else if (command.Keyword.StartsWith("/정치뉴스"))
             {
                 SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
             }
             else
             {
                 string[] answers = db.GetAnswers(command.Keyword);
-                if(answers == null || answers.Length == 0)
+                if (answers == null || answers.Length == 0)
                 {
                     return;
                 }
