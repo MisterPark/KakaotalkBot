@@ -576,6 +576,7 @@ namespace KakaotalkBot
 
                 if (string.IsNullOrEmpty(answer) == false)
                 {
+                    SmartString.CurrentNickname = command.Nickname;
                     string parsedAnswer = SmartString.Parse(answer);
                     SendTextToChatroom(textBox1.Text, parsedAnswer);
                 }
