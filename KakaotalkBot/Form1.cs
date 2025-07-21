@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -25,22 +24,7 @@ namespace KakaotalkBot
         [DllImport("user32.dll")]
         private static extern bool IsWindowVisible(IntPtr hWnd);
         [DllImport("user32.dll")]
-        static extern bool SetCursorPos(int x, int y);
-        [DllImport("user32.dll")]
-        static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-        [DllImport("user32.dll")]
         static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern IntPtr GlobalLock(IntPtr hMem);
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool GlobalUnlock(IntPtr hMem);
-        [DllImport("kernel32.dll", SetLastError = true)]
-
-        private static extern IntPtr GlobalFree(IntPtr hMem);
-        [DllImport("user32.dll")]
-        static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -61,10 +45,6 @@ namespace KakaotalkBot
         [DllImport("user32.dll")]
         public static extern bool SendMessage(IntPtr hWnd, uint Msg, int wParam, string lParam);
 
-        [DllImport("user32.dll", SetLastError = true)]
-        public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
 
         private const uint GMEM_MOVEABLE = 0x0002;
@@ -282,9 +262,7 @@ namespace KakaotalkBot
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            //JustSpaceKeyDown();
-            DetectScreen();
-            DetectScreen2();
+
         }
 
         private void Timer_Tick2(object sender, EventArgs e)
@@ -462,6 +440,21 @@ namespace KakaotalkBot
             for (int i = idx + 1; i < chatLog.Count; i++)
             {
                 string line = chatLog[i];
+                if (line.Contains("님이 들어왔습니다."))
+                {
+                    int index = line.LastIndexOf("님");
+                    string nick = line.Substring(0, index);
+                    ProcessKeyword(nick, "/입장");
+                    continue;
+                }
+                else if (line.Contains("님이 나갔습니다."))
+                {
+                    int index = line.LastIndexOf("님");
+                    string nick = line.Substring(0, index);
+                    ProcessKeyword(nick, "/퇴장");
+                    continue;
+                }
+
                 if (!line.StartsWith("[")) continue;
 
                 int firstClose = line.IndexOf(']');
@@ -575,6 +568,16 @@ namespace KakaotalkBot
                 if (string.IsNullOrEmpty(answer) == false)
                 {
                     SendTextToChatroom(textBox1.Text, $"{answer}");
+                }
+            }
+            else if (command.Keyword == "/입장" || command.Keyword == "/퇴장")
+            {
+                string answer = db.GetAnswer(command.Keyword);
+
+                if (string.IsNullOrEmpty(answer) == false)
+                {
+                    string parsedAnswer = SmartString.Parse(answer);
+                    SendTextToChatroom(textBox1.Text, parsedAnswer);
                 }
             }
             else if (command.Keyword == "/출첵")
@@ -830,269 +833,6 @@ namespace KakaotalkBot
             return handle;
         }
 
-        private void DetectScreen()
-        {
-            IntPtr handle = FindVoiceRoomWindow();
-            if (handle != IntPtr.Zero)
-            {
-                if (GetWindowRect(handle, out RECT rect))
-                {
-                    int x = rect.Left;
-                    int y = rect.Top;
-                    int width = rect.Right - rect.Left;
-                    int height = rect.Bottom - rect.Top;
-
-                    //SetCursorPos(x, y);
-                    Rectangle voiceRoomArea = new Rectangle(x, y, width, height);
-
-                    Rectangle totalBounds = Screen.AllScreens.Select(s => s.Bounds).Aggregate(Rectangle.Union);
-                    using (Bitmap bitmap = new Bitmap(totalBounds.Width, totalBounds.Height))
-                    {
-                        using (Graphics g = Graphics.FromImage(bitmap))
-                        {
-                            g.CopyFromScreen(totalBounds.Location, Point.Empty, totalBounds.Size);
-                        }
-
-                        // 이미지 자르기
-                        Bitmap voiceRoom = bitmap.Clone(voiceRoomArea, bitmap.PixelFormat);
-
-                        // 리스너 경계선 찾기
-                        Point listnerPoint = new Point(0, 0);
-                        if (FindImage(voiceRoom, listenerImage, ref listnerPoint, 0.05))
-                        {
-                            Rectangle speakerArea = new Rectangle(x, y, width, listnerPoint.Y);
-                            Bitmap speaker = bitmap.Clone(speakerArea, bitmap.PixelFormat);
-
-                            Rectangle listnerArea = new Rectangle(x, listnerPoint.Y, width, height - listnerPoint.Y);
-                            Bitmap listner = bitmap.Clone(listnerArea, bitmap.PixelFormat);
-
-                            // 자동수락
-                            Point targetPoint = new Point(0, 0);
-                            if (FindImage(voiceRoom, yesButton, ref targetPoint, 0.05))
-                            {
-                                SetCursorPos(x + targetPoint.X, y + targetPoint.Y);
-                                ClickLeft();
-                            }
-
-                            // 자동수락2
-                            Point targetPoint0 = new Point(0, 0);
-                            if (FindImage(voiceRoom, yesButton2, ref targetPoint0, 0.05))
-                            {
-                                SetCursorPos(x + targetPoint0.X, y + targetPoint0.Y);
-                                ClickLeft();
-                            }
-
-                            // 자동확인
-                            Point targetPoint2 = new Point(0, 0);
-                            if (FindImage(voiceRoom, okButton, ref targetPoint2, 0.05))
-                            {
-                                SetCursorPos(x + targetPoint2.X, y + targetPoint2.Y);
-                                ClickLeft();
-                            }
-
-                            // 자동확인2
-                            Point targetPoint3 = new Point(0, 0);
-                            if (FindImage(voiceRoom, okButton2, ref targetPoint3, 0.05))
-                            {
-                                SetCursorPos(x + targetPoint3.X, y + targetPoint3.Y);
-                                ClickLeft();
-                            }
-
-                            // 부방장 자동진행자
-                            Point targetPoint4 = new Point(0, 0);
-                            if (FindImage(speaker, viceHeadImage, ref targetPoint4, 0.05))
-                            {
-                                SetCursorPos(x + targetPoint4.X, y + targetPoint4.Y);
-                                ClickRight();
-                            }
-
-                            // 방장 자동진행자
-                            Point targetPoint5 = new Point(0, 0);
-                            if (FindImage(speaker, headImage, ref targetPoint5, 0.05))
-                            {
-                                SetCursorPos(x + targetPoint5.X, y + targetPoint5.Y);
-                                ClickRight();
-                            }
-
-                            // 자동 진행자로 초대
-                            Point targetPoint6 = new Point(0, 0);
-                            if (FindImage(voiceRoom, hostButton, ref targetPoint6, 0.05))
-                            {
-                                SetCursorPos(x + targetPoint6.X, y + targetPoint6.Y);
-                                ClickLeft();
-                            }
-
-                            speaker.Dispose();
-                            listner.Dispose();
-                        }
-
-                        voiceRoom.Dispose();
-                    }
-                }
-            }
-        }
-        private void DetectScreen2()
-        {
-            IntPtr handle = FindVoiceRoomWindow();
-            if (handle != IntPtr.Zero)
-            {
-                if (GetWindowRect(handle, out RECT rect))
-                {
-                    int x = rect.Left;
-                    int y = rect.Top;
-                    int width = rect.Right - rect.Left;
-                    int height = rect.Bottom - rect.Top;
-
-                    //SetCursorPos(x, y);
-                    Rectangle voiceRoomArea = new Rectangle(x, y, width, height);
-
-                    Rectangle totalBounds = Screen.AllScreens.Select(s => s.Bounds).Aggregate(Rectangle.Union);
-                    using (Bitmap bitmap = new Bitmap(totalBounds.Width, totalBounds.Height))
-                    {
-                        using (Graphics g = Graphics.FromImage(bitmap))
-                        {
-                            g.CopyFromScreen(totalBounds.Location, Point.Empty, totalBounds.Size);
-                        }
-
-                        // 이미지 자르기
-                        Bitmap voiceRoom = bitmap.Clone(voiceRoomArea, bitmap.PixelFormat);
-
-                        // 자동 진행자로 초대
-                        Point targetPoint6 = new Point(0, 0);
-                        if (FindImage(voiceRoom, hostButton, ref targetPoint6, 0.05))
-                        {
-                            SetCursorPos(x + targetPoint6.X, y + targetPoint6.Y);
-                            ClickLeft();
-                        }
-
-                        voiceRoom.Dispose();
-                    }
-                }
-            }
-        }
-        private byte[] GetPixelData(Bitmap bmp, out int stride)
-        {
-            Rectangle rect = new Rectangle(0, 0, bmp.Width, bmp.Height);
-            BitmapData bmpData = bmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
-            IntPtr ptr = bmpData.Scan0;
-            stride = bmpData.Stride;
-            int bytes = Math.Abs(stride) * bmp.Height;
-            byte[] rgbValues = new byte[bytes];
-
-            Marshal.Copy(ptr, rgbValues, 0, bytes);
-            bmp.UnlockBits(bmpData);
-
-            return rgbValues;
-        }
-        public bool FindImage(Bitmap source, Bitmap template, ref Point point, double error = 0.01)
-        {
-            // 이미지 LockBits
-            BitmapData sourceData = source.LockBits(
-                new Rectangle(0, 0, source.Width, source.Height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format24bppRgb);
-
-            BitmapData templateData = template.LockBits(
-                new Rectangle(0, 0, template.Width, template.Height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format24bppRgb);
-
-            int srcStride = sourceData.Stride;
-            int tplStride = templateData.Stride;
-
-            int tplW = template.Width;
-            int tplH = template.Height;
-
-            byte[] srcBytes = new byte[srcStride * source.Height];
-            byte[] tplBytes = new byte[tplStride * template.Height];
-
-            Marshal.Copy(sourceData.Scan0, srcBytes, 0, srcBytes.Length);
-            Marshal.Copy(templateData.Scan0, tplBytes, 0, tplBytes.Length);
-
-            source.UnlockBits(sourceData);
-            template.UnlockBits(templateData);
-
-
-            // 슬라이딩 윈도우 매칭
-
-            for (int y = 0; y <= source.Height - tplH; y++)
-            {
-                for (int x = 0; x <= source.Width - tplW; x++)
-                {
-                    if (MatchImageInner(srcBytes, tplBytes, tplW, tplH, srcStride, tplStride, x, y, error))
-                    {
-                        point = new Point(x, y);
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-        private bool MatchImageInner(byte[] srcBytes, byte[] tplBytes, int tplW, int tplH, int srcStride, int tplStride, int srcX, int srcY, double error = 0.01)
-        {
-            int matchPixelCount = 0;
-            int totalPixelCount = tplW * tplH;
-
-            for (int j = 0; j < tplH; j++)
-            {
-                for (int i = 0; i < tplW; i++)
-                {
-                    int srcIndex = (srcY + j) * srcStride + (srcX + i) * 3;
-                    int tplIndex = j * tplStride + i * 3;
-
-                    // BGR 순서 비교
-                    int sb = srcBytes[srcIndex];
-                    int sg = srcBytes[srcIndex + 1];
-                    int sr = srcBytes[srcIndex + 2];
-
-                    int tb = tplBytes[tplIndex];
-                    int tg = tplBytes[tplIndex + 1];
-                    int tr = tplBytes[tplIndex + 2];
-
-                    byte sbRate = (byte)(sb * error);
-                    byte sgRate = (byte)(sg * error);
-                    byte srRate = (byte)(sr * error);
-
-                    int maxB = sb + sbRate;
-                    int maxG = sg + sgRate;
-                    int maxR = sr + srRate;
-
-                    int minB = sb - sbRate;
-                    int minG = sg - sgRate;
-                    int minR = sr - srRate;
-
-                    // 여기 수정해야함.
-
-                    if (sb != tb) return false;
-                    if (sg != tg) return false;
-                    if (sr != tr) return false;
-
-                    //if (tb < minB) return false;
-                    //if (tb > maxB) return false;
-                    //if (tg < minG) return false;
-                    //if (tg > maxG) return false;
-                    //if (tr < minR) return false;
-                    //if (tr > maxR) return false;
-
-
-                    //if (tb >= minB && tb <= maxB && tg >= minG && tg <= maxG && tr >= minR && tr <= maxR)
-                    //{
-                    //    matchPixelCount++;
-                    //}
-                }
-            }
-
-            //double threshold = 1 - error;
-            //double similarity = (double)matchPixelCount / totalPixelCount;
-            //if (similarity >= threshold)
-            //{
-            //    return true;
-            //}
-
-            return true;
-        }
-
         private void ClickLeft()
         {
             mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
@@ -1206,29 +946,6 @@ namespace KakaotalkBot
         {
             //SendTextToChatroom(textBox1.Text, $"앙 기모띠");
             UpdateWindowList();
-        }
-
-        private void button4_Click(object sender, EventArgs e)
-        {
-
-            //string edbPath = textBox4.Text;
-            //string outputPath = textBox5.Text;
-            //string userId = textBox6.Text;
-            //byte[] hardcodedKey = new byte[]
-            //{
-            //    0x4B, 0x61, 0x6B, 0x61, 0x6F, 0x2D, 0x54, 0x61, 0x6C, 0x6B,
-            //    0x5F, 0x44, 0x42, 0x5F, 0x4B, 0x65  // ASCII로: "Kakao-Talk_DB_Ke"
-            //};
-
-            //try
-            //{
-            //    KakaoTalkDecryptor.DecryptKakaoEdb(edbPath, outputPath, userId, hardcodedKey);
-            //    MessageBox.Show("복호화 완료");
-            //}
-            //catch (Exception ex)
-            //{
-            //    MessageBox.Show("오류: " + ex.Message);
-            //}
         }
 
         private void button5_Click(object sender, EventArgs e)

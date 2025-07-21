@@ -16,7 +16,7 @@ namespace KakaotalkBot
                 int num = 1;
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine("[정치뉴스 TOP6]");
-                sb.AppendLine();
+                sb.Append("\r\n");
                 foreach (var article in articles)
                 {
                     sb.AppendLine($"{num}.{article.Headline}");
