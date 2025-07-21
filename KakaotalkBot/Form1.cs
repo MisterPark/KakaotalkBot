@@ -561,7 +561,7 @@ namespace KakaotalkBot
             //    SendTextToChatroom(textBox1.Text, $"{answer}");
             //}
 
-            if (command.Keyword == "/?" || command.Keyword == "/훈장" || command.Keyword == "/공지사항" || command.Keyword == "/패치노트")
+            if (command.Keyword == "/?" || command.Keyword == "/명령어" || command.Keyword == "/훈장" || command.Keyword == "/공지사항" || command.Keyword == "/패치노트")
             {
                 string answer = db.GetAnswer(command.Keyword);
 
