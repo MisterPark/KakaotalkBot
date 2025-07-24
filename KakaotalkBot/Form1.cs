@@ -680,16 +680,17 @@ namespace KakaotalkBot
             }
             else if (command.Keyword.StartsWith("/좋아"))
             {
-                var match = Regex.Match(command.Keyword, @"^\/(\S+)\s+(.+?)\s+(\d+)$");
-
-                if (match.Success)
+                string[] format = new string[3];
+                if (SmartString.ParseCommand(command.Keyword, out format) == ParseResult.Success)
                 {
-                    int point = 10;
-                    string keyword = match.Groups[1].Value;
-                    string nickname = match.Groups[2].Value;
-                    string number = match.Groups[3].Value;
+                    string keyword = format[0];
+                    string nickname = format[1];
+                    string number = format[2];
 
-                    if(keyword != "/좋아")
+                    int point = 10;
+                    int.TryParse(number, out point);
+
+                    if (keyword != "/좋아")
                     {
                         return;
                     }
@@ -724,24 +725,24 @@ namespace KakaotalkBot
                     {
                         SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                     }
-
                 }
                 else
                 {
                     SendTextToChatroom(textBox1.Text, $"잘못된 형식입니다.\n형식1: /좋아 [닉네임]\n형식2: /좋아 [닉네임] [숫자]");
                 }
-                
+
             }
             else if (command.Keyword.StartsWith("/싫어"))
             {
-                var match = Regex.Match(command.Keyword, @"^\/(\S+)\s+(.+?)\s+(\d+)$");
-
-                if (match.Success)
+                string[] format = new string[3];
+                if (SmartString.ParseCommand(command.Keyword, out format) == ParseResult.Success)
                 {
+                    string keyword = format[0];
+                    string nickname = format[1];
+                    string number = format[2];
+
                     int point = 10;
-                    string keyword = match.Groups[1].Value;
-                    string nickname = match.Groups[2].Value;
-                    string number = match.Groups[3].Value;
+                    int.TryParse(number, out point);
 
                     if (keyword != "/싫어")
                     {
@@ -778,7 +779,6 @@ namespace KakaotalkBot
                     {
                         SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                     }
-
                 }
                 else
                 {
