@@ -23,7 +23,7 @@ namespace KakaotalkBot
             format = new string[3];
             string[] parts = input.Split(new char[]{ ' '},StringSplitOptions.None);
 
-            if (parts.Length < 3)
+            if (parts.Length < 2)
             {
                 return ParseResult.InvalidFormat;
             }
@@ -47,7 +47,7 @@ namespace KakaotalkBot
 
             format[0] = command;
             format[1] = nickname;
-            format[2] = number.ToString();
+            format[2] = form == 1 ? number.ToString(): "10";
 
             return ParseResult.Success;
 
