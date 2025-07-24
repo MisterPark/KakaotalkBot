@@ -86,6 +86,10 @@ namespace KakaotalkBot
                 catch (Google.GoogleApiException e)
                 {
                 }
+                finally
+                {
+
+                }
             }
             
         }
@@ -109,6 +113,10 @@ namespace KakaotalkBot
                     values = response.Values;
                 }
                 catch (Exception e)
+                {
+
+                }
+                finally
                 {
 
                 }
