@@ -687,6 +687,11 @@ namespace KakaotalkBot
                     string nickname = format[1];
                     string number = format[2];
 
+                    if(nickname.StartsWith("@"))
+                    {
+                        nickname = nickname.Substring(1);
+                    }
+
                     int point = 10;
                     int.TryParse(number, out point);
 
@@ -713,7 +718,7 @@ namespace KakaotalkBot
                             {
                                 a.Point -= point;
                                 b.Popularity += point;
-                                SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👍좋아요.\n인기도 {point}점 상승");
+                                SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👍좋아요.\n인기도 {point}점 상승\n현재 인기도:{b.Popularity}");
                             }
                         }
                         else
@@ -741,6 +746,11 @@ namespace KakaotalkBot
                     string nickname = format[1];
                     string number = format[2];
 
+                    if (nickname.StartsWith("@"))
+                    {
+                        nickname = nickname.Substring(1);
+                    }
+
                     int point = 10;
                     int.TryParse(number, out point);
 
@@ -767,7 +777,7 @@ namespace KakaotalkBot
                             {
                                 a.Point -= point;
                                 b.Popularity -= point;
-                                SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👎싫어요.\n인기도 {point}점 하락");
+                                SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👎싫어요.\n인기도 {point}점 하락\n현재 인기도:{b.Popularity}");
                             }
                         }
                         else
