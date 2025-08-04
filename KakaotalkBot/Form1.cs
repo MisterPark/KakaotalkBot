@@ -700,7 +700,7 @@ namespace KakaotalkBot
                             }
                             else
                             {
-                                a.Point -= point;
+                                a.Point -= Math.Abs(point);
                                 b.Popularity += point;
                                 SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👍좋아요.\n인기도 {point}점 상승\n현재 인기도:{b.Popularity}");
                             }
@@ -759,7 +759,7 @@ namespace KakaotalkBot
                             }
                             else
                             {
-                                a.Point -= point;
+                                a.Point -= Math.Abs(point);
                                 b.Popularity -= point;
                                 SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👎싫어요.\n인기도 {point}점 하락\n현재 인기도:{b.Popularity}");
                             }
