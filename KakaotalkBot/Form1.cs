@@ -107,8 +107,6 @@ namespace KakaotalkBot
         private Thread thread;
         private bool isRunning = false;
 
-        private System.Windows.Forms.Timer timer;
-        private System.Windows.Forms.Timer timer2;
         private System.Windows.Forms.Timer timer3;
         private Bitmap yesButton;
         private Bitmap yesButton2;
@@ -133,7 +131,7 @@ namespace KakaotalkBot
         private DateTime lastUpdate = DateTime.MinValue;
 
         CustomTimer soliloquyTimer = new CustomTimer(300000);
-        CustomTimer newsTimer = new CustomTimer(1800000);
+        CustomTimer newsTimer = new CustomTimer(3600000);
 
         public Form1()
         {
@@ -158,16 +156,9 @@ namespace KakaotalkBot
             viceHeadImage = new Bitmap("부방장.bmp");
             listenerImage = new Bitmap("리스너경계선.bmp");
 
-            timer = new System.Windows.Forms.Timer();
-            timer.Interval = 500;
-            timer.Tick += Timer_Tick;
-
-            timer2 = new System.Windows.Forms.Timer();
-            timer2.Interval = 1000;
-            timer2.Tick += Timer_Tick2;
 
             timer3 = new System.Windows.Forms.Timer();
-            timer3.Interval = 6000;
+            timer3.Interval = 60000;
             timer3.Tick += Timer_Tick3;
             timer3.Start();
 
@@ -259,18 +250,6 @@ namespace KakaotalkBot
             }
         }
 
-
-
-        private void Timer_Tick(object sender, EventArgs e)
-        {
-
-        }
-
-        private void Timer_Tick2(object sender, EventArgs e)
-        {
-            UpdateWindowList();
-            ProcessCopyChat();
-        }
 
         private void Timer_Tick3(object sender, EventArgs e)
         {
@@ -510,6 +489,11 @@ namespace KakaotalkBot
             }
         }
 
+        private void ProcessDoubleClick()
+        {
+
+        }
+
         private void ProcessComonBot()
         {
             string[] answers = db.GetAnswers("/코몽봇");
@@ -710,7 +694,7 @@ namespace KakaotalkBot
                     {
                         if (db.FindUser(nickname, out User b))
                         {
-                            if (a.Point < point)
+                            if (a.Point < Math.Abs(point))
                             {
                                 SendTextToChatroom(textBox1.Text, $"포인트가 부족합니다.\n남은 포인트: {a.Point}");
                             }
@@ -769,7 +753,7 @@ namespace KakaotalkBot
                     {
                         if (db.FindUser(nickname, out User b))
                         {
-                            if (a.Point < point)
+                            if (a.Point < Math.Abs(point))
                             {
                                 SendTextToChatroom(textBox1.Text, $"포인트가 부족합니다.\n남은 포인트: {a.Point}");
                             }
@@ -867,30 +851,11 @@ namespace KakaotalkBot
                 if (id == 1)
                 {
                     // F5 누르면 실행할 동작
-                    if (timer.Enabled)
-                    {
-                        timer.Stop();
-                        button1.BackColor = Color.Red;
-                    }
-                    else
-                    {
-                        timer.Start();
-                        button1.BackColor = Color.Green;
-                    }
                 }
 
                 if (id == 2)
                 {
-                    if (timer2.Enabled)
-                    {
-                        timer2.Stop();
-                        button2.BackColor = Color.Red;
-                    }
-                    else
-                    {
-                        timer2.Start();
-                        button2.BackColor = Color.Green;
-                    }
+
                 }
             }
             base.WndProc(ref m);
@@ -898,18 +863,6 @@ namespace KakaotalkBot
 
         private void button1_Click(object sender, System.EventArgs e)
         {
-            if (timer.Enabled)
-            {
-                timer.Stop();
-                button1.BackColor = Color.Red;
-                button2.Text = "시작";
-            }
-            else
-            {
-                timer.Start();
-                button1.BackColor = Color.Green;
-                button2.Text = "실행중...";
-            }
 
         }
 
@@ -921,8 +874,6 @@ namespace KakaotalkBot
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
-            timer.Stop();
-            timer2.Stop();
             timer3.Stop();
 
             isRunning = false;
@@ -935,18 +886,7 @@ namespace KakaotalkBot
 
         private void button2_Click(object sender, EventArgs e)
         {
-            if (timer2.Enabled)
-            {
-                timer2.Stop();
-                button2.BackColor = Color.Red;
-                button2.Text = "시작";
-            }
-            else
-            {
-                timer2.Start();
-                button2.BackColor = Color.Green;
-                button2.Text = "실행중...";
-            }
+
         }
 
         private void listView1_SelectedIndexChanged(object sender, EventArgs e)
