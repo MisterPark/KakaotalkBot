@@ -19,7 +19,7 @@ namespace KakaotalkBot
                 sb.Append("\r\n");
                 foreach (var article in articles)
                 {
-                    sb.AppendLine($"{num}.{article.Headline}");
+                    sb.AppendLine($"{num}. {article.Headline}");
                     sb.AppendLine($"{article.Link}");
                     num++;
                 }
