@@ -254,7 +254,7 @@ namespace KakaotalkBot
         private void Timer_Tick3(object sender, EventArgs e)
         {
             db.UpdateCommands();
-            db.UpdateUserTable();
+            //db.UpdateUserTable();
             News.Update();
         }
 
@@ -874,6 +874,7 @@ namespace KakaotalkBot
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
+            db.UpdateUserTable();
             timer3.Stop();
 
             isRunning = false;

@@ -37,7 +37,6 @@ namespace KakaotalkBot
                 user.TakeAttendance = false;
                 users.Add(user.ToRow());
             }
-            keywordSheet.WriteToSheetAll("DB", users);
         }
 
         public void UpdateUserTable()
