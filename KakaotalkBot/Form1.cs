@@ -156,6 +156,7 @@ namespace KakaotalkBot
             viceHeadImage = new Bitmap("부방장.bmp");
             listenerImage = new Bitmap("리스너경계선.bmp");
 
+            Application.ApplicationExit += new EventHandler(OnApplicationExit);
 
             timer3 = new System.Windows.Forms.Timer();
             timer3.Interval = 60000;
@@ -166,6 +167,11 @@ namespace KakaotalkBot
 
             thread = new Thread(WorkerThread);
             thread.Start();
+        }
+
+        private void OnApplicationExit(object sender, EventArgs e)
+        {
+            db.UpdateUserTable();
         }
 
         private void WorkerThread()
@@ -874,7 +880,7 @@ namespace KakaotalkBot
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
-            db.UpdateUserTable();
+            
             timer3.Stop();
 
             isRunning = false;
