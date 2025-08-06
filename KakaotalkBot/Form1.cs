@@ -171,7 +171,7 @@ namespace KakaotalkBot
 
         private void OnApplicationExit(object sender, EventArgs e)
         {
-            db.UpdateUserTable();
+            
         }
 
         private void WorkerThread()
@@ -260,7 +260,7 @@ namespace KakaotalkBot
         private void Timer_Tick3(object sender, EventArgs e)
         {
             db.UpdateCommands();
-            //db.UpdateUserTable();
+            db.UpdateUserTable();
             News.Update();
         }
 
