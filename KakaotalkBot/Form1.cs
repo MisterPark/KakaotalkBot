@@ -860,7 +860,7 @@ namespace KakaotalkBot
             {
                 SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
             }
-            else if(command.Keyword == "상식퀴즈")
+            else if(command.Keyword == "/상식퀴즈")
             {
                 ProcessCommonSense();
             }
