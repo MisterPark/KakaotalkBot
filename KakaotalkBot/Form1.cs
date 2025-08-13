@@ -140,9 +140,11 @@ namespace KakaotalkBot
         CustomTimer newsTimer = new CustomTimer(3600000);
 
         private Queue<QuizAnswer> quizAnswers = new Queue<QuizAnswer>();
+        private bool isCorrect = false;
 
         public Form1()
         {
+            
             InitializeComponent();
 
             random = new Random(DateTime.Now.Millisecond);
@@ -207,8 +209,8 @@ namespace KakaotalkBot
                 if (soliloquyTimer.Check(deltaTime))
                 {
                     //ProcessComonBot();
-                    db.SetNextCommonSense();
-                    ProcessCommonSense();
+
+                    ProcessNextCommonSense();
                 }
 
                 if (newsTimer.Check(deltaTime))
@@ -547,6 +549,21 @@ namespace KakaotalkBot
             }
         }
 
+        private void ProcessNextCommonSense()
+        {
+            CommonSense quiz = db.GetCurrentQuiz();
+            if (quiz != null)
+            {
+                if (isCorrect == false)
+                {
+                    SendTextToChatroom(textBox1.Text, $"정답자가 없습니다.\n정답: {quiz.Answer}");
+                }
+            }
+           
+            db.SetNextCommonSense();
+            ProcessCommonSense();
+        }
+
         void RemoveUntilAndIncludingTarget(List<string> list, string target)
         {
             int idx = list.IndexOf(target);
@@ -608,6 +625,10 @@ namespace KakaotalkBot
 
                         a.Point += point;
                         SendTextToChatroom(textBox1.Text, $"정답자: {quizAnswer.Nickname}\n정답: {quiz.Answer}\n+{point} 포인트 득점!!👍\n 현재 포인트: {a.Point}");
+                    }
+                    else
+                    {
+                        SendTextToChatroom(textBox1.Text, $"정답: {quiz.Answer}");
                     }
 
                     db.CurrentAnswerIndex = -1;
