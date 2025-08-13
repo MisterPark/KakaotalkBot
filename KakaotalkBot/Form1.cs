@@ -207,6 +207,7 @@ namespace KakaotalkBot
                 if (soliloquyTimer.Check(deltaTime))
                 {
                     //ProcessComonBot();
+                    db.SetNextCommonSense();
                     ProcessCommonSense();
                 }
 

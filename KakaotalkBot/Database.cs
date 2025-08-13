@@ -195,15 +195,24 @@ namespace KakaotalkBot
             return null;
         }
 
-        public string GetCommonSenseText()
+        public void SetNextCommonSense()
         {
             currentAnswerIndex = random.Next(0, commonSenses.Count);
+        }
+
+        public string GetCommonSenseText()
+        {
+            if(currentAnswerIndex < 0 )
+            {
+                return "상식퀴즈 문제를 준비하고 있습니다.";
+            }
             CommonSense cs = commonSenses[currentAnswerIndex];
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("[상식퀴즈]");
             sb.AppendLine(cs.Question);
+            sb.AppendLine($"분류: {cs.Category}");
             sb.AppendLine($"난이도: {cs.Difficulty}");
-            sb.AppendLine($"형식: {GetCommonSenseFormat(cs.Answer)}");
+            sb.Append($"형식: {GetCommonSenseFormat(cs.Answer)}");
             
             return sb.ToString();
         }
