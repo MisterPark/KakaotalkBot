@@ -366,7 +366,7 @@ namespace KakaotalkBot
 
         public void SendTextToChatroom(string chatroomName, string message)
         {
-            soliloquyTimer.Reset();
+            //soliloquyTimer.Reset();
 
             IntPtr hwndMain = FindWindow(null, chatroomName);
             IntPtr hwndEdit = FindWindowEx(hwndMain, IntPtr.Zero, "RichEdit50W", null);
