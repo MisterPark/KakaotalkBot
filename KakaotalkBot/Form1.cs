@@ -775,7 +775,7 @@ namespace KakaotalkBot
                             {
                                 a.Point -= Math.Abs(point);
                                 b.Popularity += point;
-                                SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👍좋아요.\n인기도 {point}점 상승\n현재 인기도:{b.Popularity}");
+                                SendTextToChatroom(textBox1.Text, $"[{a.Nickname}]님이 [{b.Nickname}]님에게 👍좋아요.\n인기도 {point}점 상승\n현재 인기도:{b.Popularity}");
                             }
                         }
                         else
@@ -834,7 +834,7 @@ namespace KakaotalkBot
                             {
                                 a.Point -= Math.Abs(point);
                                 b.Popularity -= point;
-                                SendTextToChatroom(textBox1.Text, $"[{b.Nickname}]님에게 👎싫어요.\n인기도 {point}점 하락\n현재 인기도:{b.Popularity}");
+                                SendTextToChatroom(textBox1.Text, $"[{a.Nickname}]님이 [{b.Nickname}]님에게 👎싫어요.\n인기도 {point}점 하락\n현재 인기도:{b.Popularity}");
                             }
                         }
                         else
@@ -855,6 +855,10 @@ namespace KakaotalkBot
             else if (command.Keyword.StartsWith("/정치뉴스"))
             {
                 SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
+            }
+            else if(command.Keyword == "상식퀴즈")
+            {
+                ProcessCommonSense();
             }
             else
             {
