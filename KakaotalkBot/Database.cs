@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace KakaotalkBot
 {
@@ -10,17 +11,24 @@ namespace KakaotalkBot
         private List<string> keywords = new List<string>();
         private List<List<string>> commands = new List<List<string>>();
         private List<User> userTable = new List<User>();
+        private List<CommonSense> commonSenses = new List<CommonSense>();
+
+        private Random random;
 
         public List<List<string>> Commands { get { return commands; } }
         public List<string> Keywords { get { return keywords; } }
         public List<User> UserTable { get { return userTable; } }
+        public List<CommonSense> CommonSenses { get { return commonSenses; } }
 
         public Database(string applicationName, string spreadsheetId)
         {
+            random = new Random(DateTime.Now.Millisecond);
+
             keywordSheet = new GoogleSheetHelper(applicationName, spreadsheetId);
             commands = GetCommanads();
             keywords = GetKeywords();
             userTable = GetUserTable();
+            commonSenses = GetCommonSenses();
         }
 
         public void UpdateCommands()
@@ -47,6 +55,11 @@ namespace KakaotalkBot
                 users.Add(user.ToRow());
             }
             keywordSheet.WriteToSheetAll("DB", users);
+        }
+
+        public void UpdateCommonSenses()
+        {
+            commonSenses = GetCommonSenses();
         }
 
         public void AddUser(string username)
@@ -123,6 +136,17 @@ namespace KakaotalkBot
             return users;
         }
 
+        private List<CommonSense> GetCommonSenses()
+        {
+            var db = keywordSheet.ReadAllFromSheet("상식퀴즈");
+            List<CommonSense> users = new List<CommonSense>();
+            foreach (var row in db)
+            {
+                users.Add(CommonSense.ToCommonSense(row));
+            }
+            return users;
+        }
+
         private List<List<string>> GetCommanads()
         {
             var keywords = keywordSheet.ReadAllFromSheet("키워드");
@@ -166,6 +190,36 @@ namespace KakaotalkBot
             }
 
             return null;
+        }
+
+        public string GetCommonSenseText()
+        {
+            int rand = random.Next(0, commonSenses.Count);
+            CommonSense cs = commonSenses[rand];
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("[상식퀴즈]");
+            sb.AppendLine(cs.Question);
+            sb.AppendLine($"난이도: {cs.Difficulty}");
+            sb.AppendLine($"형식: {GetCommonSenseFormat(cs.Answer)}");
+            
+            return sb.ToString();
+        }
+
+        private string GetCommonSenseFormat(string answer)
+        {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < answer.Length; i++)
+            {
+                if(answer[i] >= 0 &&  answer[i] < 48)
+                {
+                    sb.Append(answer[i]);
+                }
+                else
+                {
+                    sb.Append("O");
+                }
+            }
+            return sb.ToString();
         }
     }
 }

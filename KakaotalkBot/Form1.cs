@@ -126,7 +126,7 @@ namespace KakaotalkBot
 
         private List<string> chatLog = new List<string>();
         string lastChat = "xx";
-        private Random random = new Random();
+        private Random random;
 
         private DateTime lastUpdate = DateTime.MinValue;
 
@@ -136,6 +136,8 @@ namespace KakaotalkBot
         public Form1()
         {
             InitializeComponent();
+
+            random = new Random(DateTime.Now.Millisecond);
 
             lastUpdate = DateTime.Now;
 
@@ -183,8 +185,6 @@ namespace KakaotalkBot
             long lastTick = stopwatch.ElapsedMilliseconds;
             long nowTick = stopwatch.ElapsedMilliseconds;
             long deltaTime = nowTick - lastTick;
-
-
 
             while (isRunning)
             {
@@ -261,6 +261,7 @@ namespace KakaotalkBot
         {
             db.UpdateCommands();
             db.UpdateUserTable();
+            db.UpdateCommonSenses();
             News.Update();
         }
 
@@ -516,6 +517,12 @@ namespace KakaotalkBot
         private void ProcessNews()
         {
             SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
+        }
+
+        private void ProcessCommonSense()
+        {
+            string answer = db.GetCommonSenseText();
+            SendTextToChatroom(textBox1.Text, $"{answer}");
         }
 
         void RemoveUntilAndIncludingTarget(List<string> list, string target)
