@@ -86,6 +86,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Article.cs" />
+    <Compile Include="CommonSense.cs" />
     <Compile Include="CustomTimer.cs" />
     <Compile Include="Database.cs" />
     <Compile Include="Form1.cs">

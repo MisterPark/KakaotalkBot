@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -103,6 +104,11 @@ namespace KakaotalkBot
             public string Keyword;
         }
 
+        public struct QuizAnswer
+        {
+            public string Nickname;
+            public string Answer;
+        }
 
         private Thread thread;
         private bool isRunning = false;
@@ -132,6 +138,8 @@ namespace KakaotalkBot
 
         CustomTimer soliloquyTimer = new CustomTimer(300000);
         CustomTimer newsTimer = new CustomTimer(3600000);
+
+        private Queue<QuizAnswer> quizAnswers = new Queue<QuizAnswer>();
 
         public Form1()
         {
@@ -198,13 +206,16 @@ namespace KakaotalkBot
 
                 if (soliloquyTimer.Check(deltaTime))
                 {
-                    ProcessComonBot();
+                    //ProcessComonBot();
+                    ProcessCommonSense();
                 }
 
                 if (newsTimer.Check(deltaTime))
                 {
                     ProcessNews();
                 }
+
+                ProcessQuiz();
             }
         }
 
@@ -452,6 +463,7 @@ namespace KakaotalkBot
                     string nickname = line.Substring(1, firstClose - 1).Trim();
                     string message = line.Substring(secondClose + 2).Trim();
 
+                    ProcessQuizAnswer(nickname, message);
                     // 키워드 포함 여부 검사
                     if (db.Keywords.Any(k => message.StartsWith(k)))
                     {
@@ -543,6 +555,54 @@ namespace KakaotalkBot
             command.Nickname = nickname;
             command.Keyword = message;
             commands.Enqueue(command);
+        }
+
+        private void ProcessQuizAnswer(string nickname, string answer)
+        {
+            QuizAnswer quizAnswer = new QuizAnswer();
+            quizAnswer.Nickname = nickname;
+            quizAnswer.Answer = answer;
+            quizAnswers.Enqueue(quizAnswer);
+        }
+
+        private void ProcessQuiz()
+        {
+            CommonSense quiz = db.GetCurrentQuiz();
+
+            while (quizAnswers.Count != 0)
+            {
+                QuizAnswer quizAnswer = quizAnswers.Dequeue();
+
+                
+                if (quizAnswer.Answer == quiz.Answer)
+                {
+                    if (db.FindUser(quizAnswer.Nickname, out User a))
+                    {
+                        int point = 0;
+                        if (quiz.Difficulty == "상")
+                        {
+                            point = 3;
+                        }
+                        else if (quiz.Difficulty == "중")
+                        {
+                            point = 2;
+                        }
+                        else
+                        {
+                            point = 1;
+                        }
+
+                        a.Point += point;
+                        SendTextToChatroom(textBox1.Text, $"정답자: {quizAnswer.Nickname}\n정답: {quiz.Answer}\n+{point} 포인트 득점!!👍\n 현재 포인트: {a.Point}");
+                    }
+
+                    db.CurrentAnswerIndex = -1;
+                    break;
+                }
+            }
+
+            quizAnswers.Clear();
+            
         }
 
         private void ProcessCommand()

@@ -14,11 +14,14 @@ namespace KakaotalkBot
         private List<CommonSense> commonSenses = new List<CommonSense>();
 
         private Random random;
+        private int currentAnswerIndex = -1;
 
         public List<List<string>> Commands { get { return commands; } }
         public List<string> Keywords { get { return keywords; } }
         public List<User> UserTable { get { return userTable; } }
         public List<CommonSense> CommonSenses { get { return commonSenses; } }
+        public int CurrentAnswerIndex { get {  return currentAnswerIndex; }  set { currentAnswerIndex = value; } }
+
 
         public Database(string applicationName, string spreadsheetId)
         {
@@ -194,8 +197,8 @@ namespace KakaotalkBot
 
         public string GetCommonSenseText()
         {
-            int rand = random.Next(0, commonSenses.Count);
-            CommonSense cs = commonSenses[rand];
+            currentAnswerIndex = random.Next(0, commonSenses.Count);
+            CommonSense cs = commonSenses[currentAnswerIndex];
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("[상식퀴즈]");
             sb.AppendLine(cs.Question);
@@ -210,7 +213,7 @@ namespace KakaotalkBot
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < answer.Length; i++)
             {
-                if(answer[i] >= 0 &&  answer[i] < 48)
+                if(answer[i] >= 20 &&  answer[i] < 48)
                 {
                     sb.Append(answer[i]);
                 }
@@ -220,6 +223,14 @@ namespace KakaotalkBot
                 }
             }
             return sb.ToString();
+        }
+
+        public CommonSense GetCurrentQuiz()
+        {
+            if (currentAnswerIndex < 0) return null;
+
+            CommonSense cs = commonSenses[currentAnswerIndex];
+            return cs;
         }
     }
 }
