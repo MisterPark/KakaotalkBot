@@ -202,6 +202,10 @@ namespace KakaotalkBot
 
         public string GetCommonSenseText()
         {
+            if(currentAnswerIndex < 0 )
+            {
+                return "상식퀴즈 문제를 준비하고 있습니다.";
+            }
             CommonSense cs = commonSenses[currentAnswerIndex];
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("[상식퀴즈]");
