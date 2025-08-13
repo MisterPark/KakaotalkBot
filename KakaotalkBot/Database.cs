@@ -204,7 +204,7 @@ namespace KakaotalkBot
         {
             if(currentAnswerIndex < 0 )
             {
-                return "상식퀴즈 문제를 준비하고 있습니다.";
+                return string.Empty;
             }
             CommonSense cs = commonSenses[currentAnswerIndex];
             StringBuilder sb = new StringBuilder();

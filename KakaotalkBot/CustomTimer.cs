@@ -4,6 +4,7 @@
     {
         private long tick = 0;
         public long Delay { get; set; }
+        public long TimeLeft { get { return Delay - tick; } }
         public CustomTimer(long delay)
         {
             Delay = delay;

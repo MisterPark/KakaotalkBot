@@ -535,7 +535,16 @@ namespace KakaotalkBot
         private void ProcessCommonSense()
         {
             string answer = db.GetCommonSenseText();
-            SendTextToChatroom(textBox1.Text, $"{answer}");
+            if (string.IsNullOrEmpty(answer))
+            {
+                double left = soliloquyTimer.TimeLeft * 0.001;
+
+                SendTextToChatroom(textBox1.Text, $"다음 퀴즈를 준비하고 있습니다.\n남은 시간: {left}초");
+            }
+            else
+            {
+                SendTextToChatroom(textBox1.Text, $"{answer}");
+            }
         }
 
         void RemoveUntilAndIncludingTarget(List<string> list, string target)
