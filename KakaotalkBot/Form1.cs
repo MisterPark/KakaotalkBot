@@ -568,6 +568,10 @@ namespace KakaotalkBot
         private void ProcessQuiz()
         {
             CommonSense quiz = db.GetCurrentQuiz();
+            if(quiz == null)
+            {
+                return;
+            }
 
             while (quizAnswers.Count != 0)
             {
