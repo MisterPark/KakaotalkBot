@@ -610,11 +610,19 @@ namespace KakaotalkBot
                     if (db.FindUser(quizAnswer.Nickname, out User a))
                     {
                         int point = 0;
-                        if (quiz.Difficulty == "상")
+                        if (quiz.Difficulty == "최상")
+                        {
+                            point = 5;
+                        }
+                        else if (quiz.Difficulty == "상")
+                        {
+                            point = 4;
+                        }
+                        else if (quiz.Difficulty == "중")
                         {
                             point = 3;
                         }
-                        else if (quiz.Difficulty == "중")
+                        else if (quiz.Difficulty == "하")
                         {
                             point = 2;
                         }
