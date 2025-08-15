@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace KakaotalkBot
@@ -13,7 +14,8 @@ namespace KakaotalkBot
         private List<User> userTable = new List<User>();
         private List<CommonSense> commonSenses = new List<CommonSense>();
 
-        private Random random;
+        private RandomNumberGenerator random;
+        private byte[] randomBytes = new byte[4];
         private int currentAnswerIndex = -1;
 
         public List<List<string>> Commands { get { return commands; } }
@@ -25,8 +27,7 @@ namespace KakaotalkBot
 
         public Database(string applicationName, string spreadsheetId)
         {
-            random = new Random(DateTime.Now.Millisecond);
-
+            random = RandomNumberGenerator.Create();
             keywordSheet = new GoogleSheetHelper(applicationName, spreadsheetId);
             commands = GetCommanads();
             keywords = GetKeywords();
@@ -197,7 +198,8 @@ namespace KakaotalkBot
 
         public void SetNextCommonSense()
         {
-            currentAnswerIndex = random.Next(0, commonSenses.Count);
+            random.GetBytes(randomBytes);
+            currentAnswerIndex = BitConverter.ToInt32(randomBytes, 0);
         }
 
         public string GetCommonSenseText()
@@ -222,7 +224,7 @@ namespace KakaotalkBot
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < answer.Length; i++)
             {
-                if(answer[i] >= 20 &&  answer[i] < 48)
+                if(answer[i] >= 20 && answer[i] < 48)
                 {
                     sb.Append(answer[i]);
                 }
