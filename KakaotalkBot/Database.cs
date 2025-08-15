@@ -199,7 +199,8 @@ namespace KakaotalkBot
         public void SetNextCommonSense()
         {
             random.GetBytes(randomBytes);
-            currentAnswerIndex = BitConverter.ToInt32(randomBytes, 0);
+            int randomValue = BitConverter.ToInt32(randomBytes, 0);
+            currentAnswerIndex = randomValue % commonSenses.Count;
         }
 
         public string GetCommonSenseText()
