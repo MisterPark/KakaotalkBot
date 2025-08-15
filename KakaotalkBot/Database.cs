@@ -200,6 +200,7 @@ namespace KakaotalkBot
         {
             random.GetBytes(randomBytes);
             int randomValue = BitConverter.ToInt32(randomBytes, 0);
+            randomValue = Math.Abs(randomValue);
             currentAnswerIndex = randomValue % commonSenses.Count;
         }
 
