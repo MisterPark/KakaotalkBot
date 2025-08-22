@@ -144,8 +144,10 @@ namespace KakaotalkBot
         {
             var db = keywordSheet.ReadAllFromSheet("상식퀴즈");
             List<CommonSense> users = new List<CommonSense>();
-            foreach (var row in db)
+            for (int i = 0; i < db.Count; i++) 
             {
+                if (i == 0) continue;
+                var row = db[i];
                 users.Add(CommonSense.ToCommonSense(row));
             }
             return users;
@@ -216,7 +218,7 @@ namespace KakaotalkBot
             sb.AppendLine(cs.Question);
             sb.AppendLine($"분류: {cs.Category}");
             sb.AppendLine($"난이도: {cs.Difficulty}");
-            sb.Append($"형식: {GetCommonSenseFormat(cs.Answer)}");
+            sb.Append($"힌트: {cs.Hint}");
             
             return sb.ToString();
         }
@@ -226,6 +228,18 @@ namespace KakaotalkBot
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < answer.Length; i++)
             {
+                //if (answer[i] == '&')
+                //{
+                //    sb.Append(",");
+                //    continue;
+                //}
+
+                //if (answer[i]=='|')
+                //{
+                //    sb.Append("또는");
+                //    continue;
+                //}
+                
                 if(answer[i] >= 20 && answer[i] < 48)
                 {
                     sb.Append(answer[i]);

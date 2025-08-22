@@ -556,7 +556,7 @@ namespace KakaotalkBot
             {
                 if (isCorrect == false)
                 {
-                    SendTextToChatroom(textBox1.Text, $"정답자가 없습니다.\n정답: {quiz.Answer}");
+                    SendTextToChatroom(textBox1.Text, $"정답자가 없습니다.\n정답: {quiz.Answer}\n해설: {quiz.Explanation}");
                 }
             }
            
@@ -632,11 +632,11 @@ namespace KakaotalkBot
                         }
 
                         a.Point += point;
-                        SendTextToChatroom(textBox1.Text, $"정답자: {quizAnswer.Nickname}\n정답: {quiz.Answer}\n+{point} 포인트 득점!!👍\n 현재 포인트: {a.Point}");
+                        SendTextToChatroom(textBox1.Text, $"정답자: {quizAnswer.Nickname}\n정답: {quiz.Answer}\n해설: {quiz.Explanation}\n+{point} 포인트 득점!!👍\n 현재 포인트: {a.Point}");
                     }
                     else
                     {
-                        SendTextToChatroom(textBox1.Text, $"정답: {quiz.Answer}");
+                        SendTextToChatroom(textBox1.Text, $"정답: {quiz.Answer}\n해설: {quiz.Explanation}");
                     }
 
                     db.CurrentAnswerIndex = -1;
