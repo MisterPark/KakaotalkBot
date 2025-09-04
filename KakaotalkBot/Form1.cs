@@ -98,12 +98,6 @@ namespace KakaotalkBot
             public IntPtr Handle;
         }
 
-        public struct Command
-        {
-            public string Nickname;
-            public string Keyword;
-        }
-
         public struct QuizAnswer
         {
             public string Nickname;
@@ -138,6 +132,7 @@ namespace KakaotalkBot
 
         CustomTimer soliloquyTimer = new CustomTimer(300000);
         CustomTimer newsTimer = new CustomTimer(3600000);
+        CustomTimer dbTimer = new CustomTimer(60000);
 
         private Queue<QuizAnswer> quizAnswers = new Queue<QuizAnswer>();
         private bool isCorrect = false;
@@ -218,6 +213,11 @@ namespace KakaotalkBot
                     ProcessNews();
                 }
 
+                if(dbTimer.Check(deltaTime))
+                {
+                    ProcessUpdateDB();
+                }
+
                 ProcessQuiz();
             }
         }
@@ -273,10 +273,7 @@ namespace KakaotalkBot
 
         private void Timer_Tick3(object sender, EventArgs e)
         {
-            db.UpdateCommands();
-            db.UpdateUserTable();
-            db.UpdateCommonSenses();
-            News.Update();
+            
         }
 
         public static void LaunchKakaoTalk()
@@ -534,6 +531,15 @@ namespace KakaotalkBot
             SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
         }
 
+        private void ProcessUpdateDB()
+        {
+            db.UpdateCommands();
+            db.UpdateUserTable();
+            db.UpdateCommonSenses();
+            db.UpdateTopic();
+            News.Update();
+        }
+
         private void ProcessCommonSense()
         {
             string answer = db.GetCommonSenseText();
@@ -773,6 +779,26 @@ namespace KakaotalkBot
                         sb.AppendLine($"{emoji}{beforeRank}위 {rank[i].Nickname} {rank[i].Popularity}");
 
                         beforePop = currentPop;
+                    }
+
+                    SendTextToChatroom(textBox1.Text, sb.ToString());
+                }
+            }
+            else if (command.Keyword.StartsWith("/주제"))
+            {
+                if (command.Keyword == "/주제")
+                {
+                    string answer = db.GetAnswer(command.Keyword);
+
+                    if (string.IsNullOrEmpty(answer)) return;
+
+                    StringBuilder sb = new StringBuilder();
+                    List<Topic> topics = db.Topics;
+
+                    sb.AppendLine(answer);
+                    for (int i = 0; i < topics.Count; i++)
+                    {
+                        sb.AppendLine($"{topics[i].Title}({topics[i].CreatedAt})");
                     }
 
                     SendTextToChatroom(textBox1.Text, sb.ToString());

@@ -13,6 +13,7 @@ namespace KakaotalkBot
         private List<List<string>> commands = new List<List<string>>();
         private List<User> userTable = new List<User>();
         private List<CommonSense> commonSenses = new List<CommonSense>();
+        private List<Topic> topics = new List<Topic>();
 
         private RandomNumberGenerator random;
         private byte[] randomBytes = new byte[4];
@@ -23,7 +24,7 @@ namespace KakaotalkBot
         public List<User> UserTable { get { return userTable; } }
         public List<CommonSense> CommonSenses { get { return commonSenses; } }
         public int CurrentAnswerIndex { get {  return currentAnswerIndex; }  set { currentAnswerIndex = value; } }
-
+        public List<Topic> Topics { get { return topics; } }
 
         public Database(string applicationName, string spreadsheetId)
         {
@@ -33,6 +34,7 @@ namespace KakaotalkBot
             keywords = GetKeywords();
             userTable = GetUserTable();
             commonSenses = GetCommonSenses();
+            topics = GetTopic();
         }
 
         public void UpdateCommands()
@@ -64,6 +66,11 @@ namespace KakaotalkBot
         public void UpdateCommonSenses()
         {
             commonSenses = GetCommonSenses();
+        }
+
+        public void UpdateTopic()
+        {
+            topics = GetTopic();
         }
 
         public void AddUser(string username)
@@ -136,6 +143,19 @@ namespace KakaotalkBot
             foreach (var row in db)
             {
                 users.Add(User.ToUser(row));
+            }
+            return users;
+        }
+
+        private List<Topic> GetTopic()
+        {
+            var db = keywordSheet.ReadAllFromSheet("Topic");
+            List<Topic> users = new List<Topic>();
+            for (int i = 0; i < db.Count; i++)
+            {
+                if (i == 0) continue;
+                var row = db[i];
+                users.Add(Topic.ToTopic(row));
             }
             return users;
         }
