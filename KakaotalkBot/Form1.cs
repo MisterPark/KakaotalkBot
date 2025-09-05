@@ -803,6 +803,7 @@ namespace KakaotalkBot
                     {
                         if(currentCategory != topics[i].Category)
                         {
+                            sb.AppendLine();
                             sb.AppendLine($"{topics[i].Category}");
                             currentCategory = topics[i].Category;
                             count = 0;
