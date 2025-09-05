@@ -7,10 +7,12 @@ namespace KakaotalkBot
     {
         public string CreatedAt = string.Empty;
         public string Title = string.Empty;
+        public string Category = string.Empty;
+        public string Winner = string.Empty;
 
         public List<object> ToRow()
         {
-            return new List<object>() { CreatedAt, Title };
+            return new List<object>() { CreatedAt, Title, Category, Winner };
         }
 
         public static Topic ToTopic(List<string> list)
@@ -18,6 +20,8 @@ namespace KakaotalkBot
             Topic topic = new Topic();
             topic.CreatedAt = list[0];
             topic.Title = list[1];
+            topic.Category = list[2];
+            topic.Winner = list[3];
 
             return topic;
         }

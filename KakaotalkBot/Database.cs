@@ -18,6 +18,10 @@ namespace KakaotalkBot
         private RandomNumberGenerator random;
         private byte[] randomBytes = new byte[4];
         private int currentAnswerIndex = -1;
+        private string[] categoryOrder = new string[]
+        {
+            "🗳정치", "🎞역사", "📊경제", "👨‍🏫인문학", "🌍기타"
+        };
 
         public List<List<string>> Commands { get { return commands; } }
         public List<string> Keywords { get { return keywords; } }
@@ -25,6 +29,7 @@ namespace KakaotalkBot
         public List<CommonSense> CommonSenses { get { return commonSenses; } }
         public int CurrentAnswerIndex { get {  return currentAnswerIndex; }  set { currentAnswerIndex = value; } }
         public List<Topic> Topics { get { return topics; } }
+        public string[] CategoryOrder { get { return categoryOrder; } }
 
         public Database(string applicationName, string spreadsheetId)
         {
@@ -278,6 +283,11 @@ namespace KakaotalkBot
 
             CommonSense cs = commonSenses[currentAnswerIndex];
             return cs;
+        }
+
+        public List<Topic> GetOrderedTopics()
+        {
+            return topics.OrderByDescending(x => x.CreatedAt).OrderBy(x => Array.IndexOf(categoryOrder, x.Category)).ToList();
         }
     }
 }

@@ -784,21 +784,34 @@ namespace KakaotalkBot
                     SendTextToChatroom(textBox1.Text, sb.ToString());
                 }
             }
-            else if (command.Keyword.StartsWith("/주제"))
+            else if (command.Keyword.StartsWith("/토론"))
             {
-                if (command.Keyword == "/주제")
+                if (command.Keyword == "/토론")
                 {
                     string answer = db.GetAnswer(command.Keyword);
 
                     if (string.IsNullOrEmpty(answer)) return;
 
                     StringBuilder sb = new StringBuilder();
-                    List<Topic> topics = db.Topics;
+
+                    List<Topic> topics = db.GetOrderedTopics();
+                    string currentCategory = string.Empty;
+                    if(topics.Count != 0)
+                    {
+                        currentCategory = topics[0].Category;
+                    }
 
                     sb.AppendLine(answer);
                     for (int i = 0; i < topics.Count; i++)
                     {
+                        if(currentCategory != topics[i].Category)
+                        {
+                            sb.AppendLine($"{topics[i].Category})");
+                            sb.AppendLine();
+                            currentCategory = topics[i].Category;
+                        }
                         sb.AppendLine($"{topics[i].Title}({topics[i].CreatedAt})");
+                        sb.AppendLine($"(토론왕👑: {topics[i].Winner})");
                     }
 
                     SendTextToChatroom(textBox1.Text, sb.ToString());
