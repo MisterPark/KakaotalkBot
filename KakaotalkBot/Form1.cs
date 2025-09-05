@@ -796,22 +796,20 @@ namespace KakaotalkBot
 
                     List<Topic> topics = db.GetOrderedTopics();
                     string currentCategory = string.Empty;
-                    if(topics.Count != 0)
-                    {
-                        currentCategory = topics[0].Category;
-                    }
+                    int count = 0;
 
                     sb.AppendLine(answer);
                     for (int i = 0; i < topics.Count; i++)
                     {
                         if(currentCategory != topics[i].Category)
                         {
-                            sb.AppendLine($"{topics[i].Category})");
-                            sb.AppendLine();
+                            sb.AppendLine($"{topics[i].Category}");
                             currentCategory = topics[i].Category;
+                            count = 0;
                         }
-                        sb.AppendLine($"{topics[i].Title}({topics[i].CreatedAt})");
+                        sb.AppendLine($"{count+1}. {topics[i].Title}({topics[i].CreatedAt})");
                         sb.AppendLine($"(토론왕👑: {topics[i].Winner})");
+                        count++;
                     }
 
                     SendTextToChatroom(textBox1.Text, sb.ToString());
