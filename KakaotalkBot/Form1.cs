@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -7,7 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -15,18 +13,6 @@ namespace KakaotalkBot
 {
     public partial class Form1 : Form
     {
-        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-        [DllImport("user32.dll")]
-        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-        [DllImport("user32.dll")]
-        private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-        [DllImport("user32.dll")]
-        private static extern int GetWindowTextLength(IntPtr hWnd);
-        [DllImport("user32.dll")]
-        private static extern bool IsWindowVisible(IntPtr hWnd);
-        [DllImport("user32.dll")]
-        static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -34,46 +20,7 @@ namespace KakaotalkBot
         [DllImport("user32.dll")]
         private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
-        [DllImport("user32.dll")]
-        private static extern bool SetForegroundWindow(IntPtr hWnd);
-        [DllImport("user32.dll")]
-        public static extern bool PostMessage(IntPtr hWnd, uint Msg, int wParam, int lParam);
-
-        [DllImport("user32.dll")]
-        public static extern bool SendMessage(IntPtr hWnd, uint Msg, int wParam, string lParam);
-
-
-
-        private const uint GMEM_MOVEABLE = 0x0002;
-
-        const uint MOUSEEVENTF_LEFTDOWN = 0x02;
-        const uint MOUSEEVENTF_LEFTUP = 0x04;
-        const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
-        const uint MOUSEEVENTF_RIGHTUP = 0x0010;
-
-        // 핫키 관련 상수
         private const int WM_HOTKEY = 0x0312;
-        private const int MOD_ALT = 0x0001;
-        private const int MOD_CONTROL = 0x0002;
-        private const int MOD_SHIFT = 0x0004;
-
-        const int WM_CLOSE = 0x0010;
-        const int WM_SETTEXT = 0x000C;
-        const int WM_KEYDOWN = 0x0100;
-        const int WM_KEYUP = 0x0101;
-        const int VK_RETURN = 0x0D;
-        const int VK_SPACE = 0x20;
-
-        private const int WM_USER = 0x0400;
-        private const int EM_SETTEXTEX = WM_USER + 97;
-
-        private const int ST_DEFAULT = 0x0000;
-        private const int ST_KEEPUNDO = 0x0001;
 
 
         [StructLayout(LayoutKind.Sequential)]
@@ -92,11 +39,7 @@ namespace KakaotalkBot
             public int Bottom; // 아래쪽 (Y + Height)
         }
 
-        public struct WindowInfo
-        {
-            public string Title;
-            public IntPtr Handle;
-        }
+
 
         public struct QuizAnswer
         {
@@ -106,18 +49,6 @@ namespace KakaotalkBot
 
         private Thread thread;
         private bool isRunning = false;
-
-        private System.Windows.Forms.Timer timer3;
-        private Bitmap yesButton;
-        private Bitmap yesButton2;
-        private Bitmap noButton;
-        private Bitmap okButton;
-        private Bitmap okButton2;
-        private Bitmap hostButton;
-        private Bitmap headImage;
-        private Bitmap viceHeadImage;
-        private Bitmap listenerImage;
-
 
         private Settings settings;
         private Database db;
@@ -137,10 +68,19 @@ namespace KakaotalkBot
         private Queue<QuizAnswer> quizAnswers = new Queue<QuizAnswer>();
         private bool isCorrect = false;
 
+        private System.Windows.Forms.Timer timer;
+
         public Form1()
         {
-            
+
             InitializeComponent();
+
+            timer = new System.Windows.Forms.Timer();
+            timer.Interval = 500;
+            timer.Tick += Timer_Tick;
+            timer.Start();
+
+            WindowsMacro.Instance.Form = this;
 
             random = new Random(DateTime.Now.Millisecond);
 
@@ -153,22 +93,8 @@ namespace KakaotalkBot
 
             db = new Database(settings.ApplicationName, settings.SpreadsheetId);
 
-            yesButton = new Bitmap("수락.bmp");
-            yesButton2 = new Bitmap("수락2.bmp");
-            noButton = new Bitmap("거절.bmp");
-            okButton = new Bitmap("확인.bmp");
-            okButton2 = new Bitmap("확인2.png");
-            hostButton = new Bitmap("진행자.png");
-            headImage = new Bitmap("방장.bmp");
-            viceHeadImage = new Bitmap("부방장.bmp");
-            listenerImage = new Bitmap("리스너경계선.bmp");
 
             Application.ApplicationExit += new EventHandler(OnApplicationExit);
-
-            timer3 = new System.Windows.Forms.Timer();
-            timer3.Interval = 60000;
-            timer3.Tick += Timer_Tick3;
-            timer3.Start();
 
             UpdateWindowList();
 
@@ -176,9 +102,21 @@ namespace KakaotalkBot
             thread.Start();
         }
 
+        private void Timer_Tick(object sender, EventArgs e)
+        {
+            if(isRunning)
+            {
+                button2.BackColor = Color.Green;
+            }
+            else
+            {
+                button2.BackColor = Color.Red;
+            }
+        }
+
         private void OnApplicationExit(object sender, EventArgs e)
         {
-            
+
         }
 
         private void WorkerThread()
@@ -213,7 +151,7 @@ namespace KakaotalkBot
                     ProcessNews();
                 }
 
-                if(dbTimer.Check(deltaTime))
+                if (dbTimer.Check(deltaTime))
                 {
                     ProcessUpdateDB();
                 }
@@ -222,184 +160,20 @@ namespace KakaotalkBot
             }
         }
 
-        private List<WindowInfo> GetWindowList()
-        {
-            List<WindowInfo> windowTitles = new List<WindowInfo>();
-
-            EnumWindows((hWnd, lParam) =>
-            {
-                if (IsWindowVisible(hWnd))
-                {
-                    int length = GetWindowTextLength(hWnd);
-                    if (length > 0)
-                    {
-                        StringBuilder builder = new StringBuilder(length + 1);
-                        GetWindowText(hWnd, builder, builder.Capacity);
-                        string title = builder.ToString();
-
-                        WindowInfo windowInfo = new WindowInfo();
-                        windowInfo.Title = title;
-                        windowInfo.Handle = hWnd;
-                        windowTitles.Add(windowInfo);
-                    }
-                }
-                return true; // 계속 열거
-            }, IntPtr.Zero);
-
-            //Console.WriteLine("현재 열려 있는 윈도우 목록:");
-            //foreach (string title in windowTitles)
-            //{
-            //    Console.WriteLine($"- {title}");
-            //}
-
-            return windowTitles;
-        }
-
         private void UpdateWindowList()
         {
             listView1.Items.Clear();
 
-            List<WindowInfo> windowList = GetWindowList();
+            List<WindowInfo> windowList = WindowsMacro.Instance.GetWindowList();
             foreach (WindowInfo window in windowList)
             {
                 string[] strings = { window.Title, window.Handle.ToString() };
                 ListViewItem item = new ListViewItem(strings);
                 item.Tag = window.Handle;
                 listView1.Items.Add(item);
-                //this.Invoke((MethodInvoker)delegate {  });
             }
         }
 
-
-        private void Timer_Tick3(object sender, EventArgs e)
-        {
-            
-        }
-
-        public static void LaunchKakaoTalk()
-        {
-            string kakaoPath = @"C:\Program Files (x86)\Kakao\KakaoTalk\KakaoTalk.exe";
-
-            try
-            {
-                Process.Start(kakaoPath);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("카카오톡 실행 실패: " + ex.Message);
-            }
-        }
-
-        private void OpenChatRoom(string roomName)
-        {
-            // 1. 카카오톡 메인 창 찾기
-            IntPtr hwndKakao = FindWindow(null, "카카오톡");
-            if (hwndKakao == IntPtr.Zero)
-            {
-                LaunchKakaoTalk();
-                return;
-            }
-
-            // 2. 검색 Edit 컨트롤 찾아 들어가기
-            IntPtr hwndEdit1 = FindWindowEx(hwndKakao, IntPtr.Zero, "EVA_ChildWindow", null);
-            IntPtr hwndEdit2_1 = FindWindowEx(hwndEdit1, IntPtr.Zero, "EVA_Window", null);
-            IntPtr hwndEdit2_2 = FindWindowEx(hwndEdit1, hwndEdit2_1, "EVA_Window", null);
-            IntPtr hwndEdit3 = FindWindowEx(hwndEdit2_2, IntPtr.Zero, "Edit", null); // 최종 Edit 컨트롤
-
-            if (hwndEdit3 == IntPtr.Zero) return;
-
-
-            SendMessage(hwndEdit3, WM_SETTEXT, 0, " ");
-            //Thread.Sleep(300);
-            SendReturn(hwndEdit3);
-            //Thread.Sleep(300);
-
-            // 3. 검색어 입력
-            SendMessage(hwndEdit3, WM_SETTEXT, 0, roomName);
-            //Thread.Sleep(500); // 안정성 확보
-            // 4. 엔터키 전송 (채팅방 열기)
-            SendReturn(hwndEdit3);
-            //Thread.Sleep(100);
-        }
-
-        public static void CloseWindow(IntPtr hwnd)
-        {
-            if (hwnd != IntPtr.Zero)
-            {
-                PostMessage(hwnd, WM_CLOSE, 0, 0);
-            }
-        }
-        private string CopyChatroomText(IntPtr hwndMain)
-        {
-            IntPtr hwndList = FindWindowEx(hwndMain, IntPtr.Zero, "EVA_VH_ListControl_Dblclk", null);
-
-            if (hwndList == IntPtr.Zero)
-            {
-                return "";
-            }
-
-            // 채팅 전체 선택 후 복사 (Ctrl+A → Ctrl+C)
-            SendCtrlKey(hwndList, 'A');
-            Thread.Sleep(100);
-            SendCtrlKey(hwndList, 'c');
-            Thread.Sleep(200);
-
-            string text = string.Empty;
-            try
-            {
-                Invoke((MethodInvoker)delegate { text = Clipboard.GetText(); });
-
-            }
-            catch (Exception e)
-            {
-
-            }
-
-            return text;
-        }
-        private void SendCtrlKey(IntPtr hwnd, char key)
-        {
-            SetForegroundWindow(hwnd);
-            SendKeys.SendWait("^" + key); // ^ == Ctrl
-        }
-
-        public void SendTextToChatroom(string chatroomName, string message)
-        {
-            //soliloquyTimer.Reset();
-
-            IntPtr hwndMain = FindWindow(null, chatroomName);
-            IntPtr hwndEdit = FindWindowEx(hwndMain, IntPtr.Zero, "RichEdit50W", null);
-
-            try
-            {
-                Invoke((MethodInvoker)delegate { Clipboard.SetText(message); });
-
-                SetForegroundWindow(hwndMain);
-                Thread.Sleep(100);
-                SendCtrlKey(hwndEdit, 'v');
-
-                //SendMessage(hwndEdit, WM_SETTEXT, 0, message);
-                //SetRichEditText(hwndEdit, message);
-                //Thread.Sleep(300);
-                SendReturn(hwndEdit);
-                Thread.Sleep(300);
-                //SendReturn(hwndEdit);
-                //SendReturn(hwndEdit);
-            }
-            catch (Exception e)
-            {
-            }
-
-        }
-        public void SendReturn(IntPtr hwnd)
-        {
-            //    PostMessage(hwnd, WM_KEYDOWN, VK_RETURN, 0);
-            //    //Thread.Sleep(100);
-            //    PostMessage(hwnd, WM_KEYUP, VK_RETURN, 0);
-            //Thread.Sleep(100);
-
-            SendKeys.SendWait("~"); // ^ == Ctrl
-        }
 
         private void ProcessCopyChat()
         {
@@ -408,12 +182,12 @@ namespace KakaotalkBot
             this.Invoke((MethodInvoker)delegate { item = listView1.FindItemWithText(textBox1.Text); });
             if (item == null)
             {
-                OpenChatRoom(textBox1.Text);
+                WindowsMacro.Instance.OpenChatRoom(textBox1.Text);
                 return;
             }
             IntPtr handle = (IntPtr)item.Tag;
 
-            string chat = CopyChatroomText(handle);
+            string chat = WindowsMacro.Instance.CopyChatroomText(handle);
             string[] lines = chat.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
             bool isFirstOpen = chatLog.Count == 0;
 
@@ -508,27 +282,9 @@ namespace KakaotalkBot
             }
         }
 
-        private void ProcessDoubleClick()
-        {
-
-        }
-
-        private void ProcessComonBot()
-        {
-            string[] answers = db.GetAnswers("/코몽봇");
-
-            int rand = random.Next(0, answers.Length);
-            string answer = answers[rand];
-
-            if (string.IsNullOrEmpty(answer) == false)
-            {
-                SendTextToChatroom(textBox1.Text, $"{answer}");
-            }
-        }
-
         private void ProcessNews()
         {
-            SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
+            WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
         }
 
         private void ProcessUpdateDB()
@@ -547,37 +303,27 @@ namespace KakaotalkBot
             {
                 double left = soliloquyTimer.TimeLeft * 0.001;
 
-                SendTextToChatroom(textBox1.Text, $"다음 퀴즈를 준비하고 있습니다.\n남은 시간: {left}초");
+                WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"다음 퀴즈를 준비하고 있습니다.\n남은 시간: {left}초");
             }
             else
             {
-                SendTextToChatroom(textBox1.Text, $"{answer}");
+                WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"{answer}");
             }
         }
 
         private void ProcessNextCommonSense()
         {
-            CommonSense quiz = db.GetCurrentQuiz();
+            Quiz quiz = db.GetCurrentQuiz();
             if (quiz != null)
             {
                 if (isCorrect == false)
                 {
-                    SendTextToChatroom(textBox1.Text, $"정답자가 없습니다.\n정답: {quiz.Answer}\n해설: {quiz.Explanation}");
+                    WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"정답자가 없습니다.\n정답: {quiz.Answer}\n해설: {quiz.Explanation}");
                 }
             }
-           
+
             db.SetNextCommonSense();
             ProcessCommonSense();
-        }
-
-        void RemoveUntilAndIncludingTarget(List<string> list, string target)
-        {
-            int idx = list.IndexOf(target);
-            if (idx >= 0)
-            {
-                // 0 ~ idx까지 삭제 (타겟 포함)
-                list.RemoveRange(0, idx);
-            }
         }
 
         private void ProcessKeyword(string nickname, string message)
@@ -600,8 +346,8 @@ namespace KakaotalkBot
 
         private void ProcessQuiz()
         {
-            CommonSense quiz = db.GetCurrentQuiz();
-            if(quiz == null)
+            Quiz quiz = db.GetCurrentQuiz();
+            if (quiz == null)
             {
                 return;
             }
@@ -610,7 +356,7 @@ namespace KakaotalkBot
             {
                 QuizAnswer quizAnswer = quizAnswers.Dequeue();
 
-                
+
                 if (quizAnswer.Answer == quiz.Answer)
                 {
                     if (db.FindUser(quizAnswer.Nickname, out User a))
@@ -638,11 +384,11 @@ namespace KakaotalkBot
                         }
 
                         a.Point += point;
-                        SendTextToChatroom(textBox1.Text, $"정답자: {quizAnswer.Nickname}\n정답: {quiz.Answer}\n해설: {quiz.Explanation}\n+{point} 포인트 득점!!👍\n 현재 포인트: {a.Point}");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"정답자: {quizAnswer.Nickname}\n정답: {quiz.Answer}\n해설: {quiz.Explanation}\n+{point} 포인트 득점!!👍\n 현재 포인트: {a.Point}");
                     }
                     else
                     {
-                        SendTextToChatroom(textBox1.Text, $"정답: {quiz.Answer}\n해설: {quiz.Explanation}");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"정답: {quiz.Answer}\n해설: {quiz.Explanation}");
                     }
 
                     db.CurrentAnswerIndex = -1;
@@ -651,7 +397,7 @@ namespace KakaotalkBot
             }
 
             quizAnswers.Clear();
-            
+
         }
 
         private void ProcessCommand()
@@ -674,7 +420,7 @@ namespace KakaotalkBot
 
                 if (string.IsNullOrEmpty(answer) == false)
                 {
-                    SendTextToChatroom(textBox1.Text, $"{answer}");
+                    WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"{answer}");
                 }
             }
             else if (command.Keyword == "/입장" || command.Keyword == "/퇴장")
@@ -685,7 +431,7 @@ namespace KakaotalkBot
                 {
                     SmartString.CurrentNickname = command.Nickname;
                     string parsedAnswer = SmartString.Parse(answer);
-                    SendTextToChatroom(textBox1.Text, parsedAnswer);
+                    WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, parsedAnswer);
                 }
             }
             else if (command.Keyword == "/출첵")
@@ -696,17 +442,17 @@ namespace KakaotalkBot
                 {
                     if (db.CheckAttendance(command.Nickname))
                     {
-                        SendTextToChatroom(textBox1.Text, $"이미 출석한 유저입니다.");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"이미 출석한 유저입니다.");
                     }
                     else
                     {
                         if (db.FindUser(command.Nickname, out User user))
                         {
-                            SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님이 {answer}\n+10포인트\n(현재 포인트: {user.Point})");
+                            WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님이 {answer}\n+10포인트\n(현재 포인트: {user.Point})");
                         }
                         else
                         {
-                            SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님이 {answer}\n+10포인트");
+                            WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"[{command.Nickname}]님이 {answer}\n+10포인트");
                         }
 
 
@@ -719,11 +465,11 @@ namespace KakaotalkBot
                 {
                     if (db.FindUser(command.Nickname, out User user))
                     {
-                        SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n=================");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n=================");
                     }
                     else
                     {
-                        SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                     }
                 }
                 else if (command.Keyword.Length > 4)
@@ -732,11 +478,11 @@ namespace KakaotalkBot
                     param = param.Replace("@", "");
                     if (db.FindUser(param, out User user))
                     {
-                        SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n=================");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n=================");
                     }
                     else
                     {
-                        SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                     }
                 }
             }
@@ -781,7 +527,7 @@ namespace KakaotalkBot
                         beforePop = currentPop;
                     }
 
-                    SendTextToChatroom(textBox1.Text, sb.ToString());
+                    WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, sb.ToString());
                 }
             }
             else if (command.Keyword.StartsWith("/토론"))
@@ -801,19 +547,19 @@ namespace KakaotalkBot
                     sb.AppendLine(answer);
                     for (int i = 0; i < topics.Count; i++)
                     {
-                        if(currentCategory != topics[i].Category)
+                        if (currentCategory != topics[i].Category)
                         {
                             sb.AppendLine();
                             sb.AppendLine($"{topics[i].Category}");
                             currentCategory = topics[i].Category;
                             count = 0;
                         }
-                        sb.AppendLine($"{count+1}. {topics[i].Title}({topics[i].CreatedAt})");
+                        sb.AppendLine($"{count + 1}. {topics[i].Title}({topics[i].CreatedAt})");
                         sb.AppendLine($"(토론왕👑: {topics[i].Winner})");
                         count++;
                     }
 
-                    SendTextToChatroom(textBox1.Text, sb.ToString());
+                    WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, sb.ToString());
                 }
             }
             else if (command.Keyword.StartsWith("/좋아"))
@@ -825,7 +571,7 @@ namespace KakaotalkBot
                     string nickname = format[1];
                     string number = format[2];
 
-                    if(nickname.StartsWith("@"))
+                    if (nickname.StartsWith("@"))
                     {
                         nickname = nickname.Substring(1);
                     }
@@ -840,7 +586,7 @@ namespace KakaotalkBot
 
                     if (command.Nickname == nickname)
                     {
-                        SendTextToChatroom(textBox1.Text, $"자신에게 할 수 없는 명령입니다.");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"자신에게 할 수 없는 명령입니다.");
                         return;
                     }
 
@@ -850,28 +596,28 @@ namespace KakaotalkBot
                         {
                             if (a.Point < Math.Abs(point))
                             {
-                                SendTextToChatroom(textBox1.Text, $"포인트가 부족합니다.\n남은 포인트: {a.Point}");
+                                WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"포인트가 부족합니다.\n남은 포인트: {a.Point}");
                             }
                             else
                             {
                                 a.Point -= Math.Abs(point);
                                 b.Popularity += point;
-                                SendTextToChatroom(textBox1.Text, $"[{a.Nickname}]님이 [{b.Nickname}]님에게 👍좋아요.\n인기도 {point}점 상승\n현재 인기도:{b.Popularity}");
+                                WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"[{a.Nickname}]님이 [{b.Nickname}]님에게 👍좋아요.\n인기도 {point}점 상승\n현재 인기도:{b.Popularity}");
                             }
                         }
                         else
                         {
-                            SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
+                            WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                         }
                     }
                     else
                     {
-                        SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                     }
                 }
                 else
                 {
-                    SendTextToChatroom(textBox1.Text, $"잘못된 형식입니다.\n형식1: /좋아 [닉네임]\n형식2: /좋아 [닉네임] [숫자]");
+                    WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"잘못된 형식입니다.\n형식1: /좋아 [닉네임]\n형식2: /좋아 [닉네임] [숫자]");
                 }
 
             }
@@ -899,7 +645,7 @@ namespace KakaotalkBot
 
                     if (command.Nickname == nickname)
                     {
-                        SendTextToChatroom(textBox1.Text, $"자신에게 할 수 없는 명령입니다.");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"자신에게 할 수 없는 명령입니다.");
                         return;
                     }
 
@@ -909,35 +655,35 @@ namespace KakaotalkBot
                         {
                             if (a.Point < Math.Abs(point))
                             {
-                                SendTextToChatroom(textBox1.Text, $"포인트가 부족합니다.\n남은 포인트: {a.Point}");
+                                WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"포인트가 부족합니다.\n남은 포인트: {a.Point}");
                             }
                             else
                             {
                                 a.Point -= Math.Abs(point);
                                 b.Popularity -= point;
-                                SendTextToChatroom(textBox1.Text, $"[{a.Nickname}]님이 [{b.Nickname}]님에게 👎싫어요.\n인기도 {point}점 하락\n현재 인기도:{b.Popularity}");
+                                WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"[{a.Nickname}]님이 [{b.Nickname}]님에게 👎싫어요.\n인기도 {point}점 하락\n현재 인기도:{b.Popularity}");
                             }
                         }
                         else
                         {
-                            SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
+                            WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                         }
                     }
                     else
                     {
-                        SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
+                        WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"정보가 없는 유저입니다.");
                     }
                 }
                 else
                 {
-                    SendTextToChatroom(textBox1.Text, $"잘못된 형식입니다.\n형식1: /싫어 [닉네임]\n형식2: /싫어 [닉네임] [숫자]");
+                    WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"잘못된 형식입니다.\n형식1: /싫어 [닉네임]\n형식2: /싫어 [닉네임] [숫자]");
                 }
             }
             else if (command.Keyword.StartsWith("/정치뉴스"))
             {
-                SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
+                WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
             }
-            else if(command.Keyword == "/상식퀴즈")
+            else if (command.Keyword == "/상식퀴즈")
             {
                 ProcessCommonSense();
             }
@@ -954,7 +700,7 @@ namespace KakaotalkBot
 
                 if (string.IsNullOrEmpty(answer) == false)
                 {
-                    SendTextToChatroom(textBox1.Text, $"{answer}");
+                    WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"{answer}");
                 }
             }
 
@@ -963,43 +709,9 @@ namespace KakaotalkBot
         //================================================
 
 
-        private IntPtr FindVoiceRoomWindow()
-        {
-            IntPtr handle = IntPtr.Zero;
-            StringBuilder sb = new StringBuilder();
 
-            EnumWindows((hWnd, lParam) =>
-            {
-                if (IsWindowVisible(hWnd))
-                {
-                    int length = GetWindowTextLength(hWnd);
-                    if (length > 0)
-                    {
-                        StringBuilder builder = new StringBuilder(length + 1);
-                        GetWindowText(hWnd, builder, builder.Capacity);
-                        string title = builder.ToString();
-                        if (title.StartsWith("보이스룸: "))
-                        {
-                            handle = hWnd;
-                        }
-                    }
-                }
-                return true; // 계속 열거
-            }, IntPtr.Zero);
 
-            return handle;
-        }
 
-        private void ClickLeft()
-        {
-            mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
-            mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
-        }
-        private void ClickRight()
-        {
-            mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, UIntPtr.Zero);
-            mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, UIntPtr.Zero);
-        }
 
         protected override void WndProc(ref Message m)
         {
@@ -1032,8 +744,7 @@ namespace KakaotalkBot
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
-            
-            timer3.Stop();
+            timer.Stop();
 
             isRunning = false;
             thread.Join();
@@ -1078,7 +789,8 @@ namespace KakaotalkBot
 
         private void button6_Click(object sender, EventArgs e)
         {
-            SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
+            //WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
+            isRunning = !isRunning;
         }
     }
 }

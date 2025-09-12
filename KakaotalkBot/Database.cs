@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Data.SQLite;
 
 namespace KakaotalkBot
 {
@@ -12,7 +13,7 @@ namespace KakaotalkBot
         private List<string> keywords = new List<string>();
         private List<List<string>> commands = new List<List<string>>();
         private List<User> userTable = new List<User>();
-        private List<CommonSense> commonSenses = new List<CommonSense>();
+        private List<Quiz> commonSenses = new List<Quiz>();
         private List<Topic> topics = new List<Topic>();
 
         private RandomNumberGenerator random;
@@ -26,7 +27,7 @@ namespace KakaotalkBot
         public List<List<string>> Commands { get { return commands; } }
         public List<string> Keywords { get { return keywords; } }
         public List<User> UserTable { get { return userTable; } }
-        public List<CommonSense> CommonSenses { get { return commonSenses; } }
+        public List<Quiz> CommonSenses { get { return commonSenses; } }
         public int CurrentAnswerIndex { get {  return currentAnswerIndex; }  set { currentAnswerIndex = value; } }
         public List<Topic> Topics { get { return topics; } }
         public string[] CategoryOrder { get { return categoryOrder; } }
@@ -165,15 +166,15 @@ namespace KakaotalkBot
             return users;
         }
 
-        private List<CommonSense> GetCommonSenses()
+        private List<Quiz> GetCommonSenses()
         {
             var db = keywordSheet.ReadAllFromSheet("상식퀴즈");
-            List<CommonSense> users = new List<CommonSense>();
+            List<Quiz> users = new List<Quiz>();
             for (int i = 0; i < db.Count; i++) 
             {
                 if (i == 0) continue;
                 var row = db[i];
-                users.Add(CommonSense.ToCommonSense(row));
+                users.Add(Quiz.ToCommonSense(row));
             }
             return users;
         }
@@ -237,7 +238,7 @@ namespace KakaotalkBot
             {
                 return string.Empty;
             }
-            CommonSense cs = commonSenses[currentAnswerIndex];
+            Quiz cs = commonSenses[currentAnswerIndex];
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("[상식퀴즈]");
             sb.AppendLine(cs.Question);
@@ -248,40 +249,11 @@ namespace KakaotalkBot
             return sb.ToString();
         }
 
-        private string GetCommonSenseFormat(string answer)
-        {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < answer.Length; i++)
-            {
-                //if (answer[i] == '&')
-                //{
-                //    sb.Append(",");
-                //    continue;
-                //}
-
-                //if (answer[i]=='|')
-                //{
-                //    sb.Append("또는");
-                //    continue;
-                //}
-                
-                if(answer[i] >= 20 && answer[i] < 48)
-                {
-                    sb.Append(answer[i]);
-                }
-                else
-                {
-                    sb.Append("O");
-                }
-            }
-            return sb.ToString();
-        }
-
-        public CommonSense GetCurrentQuiz()
+        public Quiz GetCurrentQuiz()
         {
             if (currentAnswerIndex < 0) return null;
 
-            CommonSense cs = commonSenses[currentAnswerIndex];
+            Quiz cs = commonSenses[currentAnswerIndex];
             return cs;
         }
 

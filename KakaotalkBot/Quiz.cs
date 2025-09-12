@@ -2,7 +2,7 @@
 
 namespace KakaotalkBot
 {
-    public class CommonSense
+    public class Quiz
     {
         public string Question = string.Empty;
         public string Category = string.Empty;
@@ -16,9 +16,9 @@ namespace KakaotalkBot
             return new List<object>() { Question, Category, Difficulty, Answer, Hint, Explanation };
         }
 
-        public static CommonSense ToCommonSense(List<string> list)
+        public static Quiz ToCommonSense(List<string> list)
         {
-            CommonSense cs = new CommonSense();
+            Quiz cs = new Quiz();
             cs.Question = list[0];
             cs.Category = list[1];
             cs.Difficulty = list[2];
