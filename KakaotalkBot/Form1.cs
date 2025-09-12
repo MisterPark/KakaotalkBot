@@ -48,7 +48,8 @@ namespace KakaotalkBot
         }
 
         private Thread thread;
-        private bool isRunning = false;
+        private bool isThreadRunning = false;
+        private bool isBotRunning = false;
 
         private Settings settings;
         private Database db;
@@ -104,7 +105,7 @@ namespace KakaotalkBot
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            if(isRunning)
+            if(isBotRunning)
             {
                 button2.BackColor = Color.Green;
             }
@@ -121,7 +122,7 @@ namespace KakaotalkBot
 
         private void WorkerThread()
         {
-            isRunning = true;
+            isThreadRunning = true;
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
@@ -129,34 +130,38 @@ namespace KakaotalkBot
             long nowTick = stopwatch.ElapsedMilliseconds;
             long deltaTime = nowTick - lastTick;
 
-            while (isRunning)
+            while (isThreadRunning)
             {
                 nowTick = stopwatch.ElapsedMilliseconds;
                 deltaTime = nowTick - lastTick;
                 lastTick = nowTick;
                 Time.DeltaTime = deltaTime;
 
-                ProcessCopyChat();
-                ProcessReset();
-
-                if (soliloquyTimer.Check(deltaTime))
+                if(isBotRunning)
                 {
-                    //ProcessComonBot();
+                    ProcessCopyChat();
+                    ProcessReset();
 
-                    ProcessNextCommonSense();
+                    if (soliloquyTimer.Check(deltaTime))
+                    {
+                        //ProcessComonBot();
+
+                        ProcessNextCommonSense();
+                    }
+
+                    if (newsTimer.Check(deltaTime))
+                    {
+                        ProcessNews();
+                    }
+
+                    if (dbTimer.Check(deltaTime))
+                    {
+                        ProcessUpdateDB();
+                    }
+
+                    ProcessQuiz();
                 }
-
-                if (newsTimer.Check(deltaTime))
-                {
-                    ProcessNews();
-                }
-
-                if (dbTimer.Check(deltaTime))
-                {
-                    ProcessUpdateDB();
-                }
-
-                ProcessQuiz();
+                
             }
         }
 
@@ -746,7 +751,7 @@ namespace KakaotalkBot
         {
             timer.Stop();
 
-            isRunning = false;
+            isThreadRunning = false;
             thread.Join();
 
             UnregisterHotKey(this.Handle, 2);
@@ -756,7 +761,7 @@ namespace KakaotalkBot
 
         private void button2_Click(object sender, EventArgs e)
         {
-
+            isBotRunning = !isBotRunning;
         }
 
         private void listView1_SelectedIndexChanged(object sender, EventArgs e)
@@ -790,7 +795,7 @@ namespace KakaotalkBot
         private void button6_Click(object sender, EventArgs e)
         {
             //WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
-            isRunning = !isRunning;
+            
         }
     }
 }
