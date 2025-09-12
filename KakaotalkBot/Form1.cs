@@ -77,7 +77,7 @@ namespace KakaotalkBot
             InitializeComponent();
 
             timer = new System.Windows.Forms.Timer();
-            timer.Interval = 500;
+            timer.Interval = 20;
             timer.Tick += Timer_Tick;
             timer.Start();
 
