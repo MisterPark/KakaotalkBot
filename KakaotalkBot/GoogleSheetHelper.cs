@@ -20,6 +20,8 @@ namespace KakaotalkBot
 
         private object lockObject = new object();
 
+        private SheetsService service;
+
         public GoogleSheetHelper(string applicationName, string sheetId)
         {
             this.applicationName = applicationName;
@@ -28,17 +30,22 @@ namespace KakaotalkBot
 
         private SheetsService GetSheetsService()
         {
-            GoogleCredential credential;
-            using (var stream = new FileStream(CredentialFile, FileMode.Open, FileAccess.Read))
+            if (service == null)
             {
-                credential = GoogleCredential.FromStream(stream).CreateScoped(Scopes);
+                GoogleCredential credential;
+                using (var stream = new FileStream(CredentialFile, FileMode.Open, FileAccess.Read))
+                {
+                    credential = GoogleCredential.FromStream(stream).CreateScoped(Scopes);
+                }
+
+                service = new SheetsService(new BaseClientService.Initializer()
+                {
+                    HttpClientInitializer = credential,
+                    ApplicationName = applicationName,
+                });
             }
 
-            return new SheetsService(new BaseClientService.Initializer()
-            {
-                HttpClientInitializer = credential,
-                ApplicationName = applicationName,
-            });
+            return service;
         }
 
         public void WriteToSheet(string sheetName, List<string> messages)
