@@ -71,7 +71,12 @@ namespace KakaotalkBot
 
         public void UpdateCommonSenses()
         {
-            commonSenses = GetCommonSenses();
+            var list = GetCommonSenses();
+            if (list != null && list.Count != 0)
+            {
+                commonSenses = list;
+
+            }
         }
 
         public void UpdateTopic()
