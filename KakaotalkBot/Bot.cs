@@ -75,7 +75,10 @@ namespace KakaotalkBot
             var list = WindowsMacro.Instance.GetWindowList();
             foreach (var window in list)
             {
-                windowList.Add(window.Title, window);
+                if(windowList.ContainsKey(window.Title) == false)
+                {
+                    windowList.Add(window.Title, window);
+                }
             }
         }
 
