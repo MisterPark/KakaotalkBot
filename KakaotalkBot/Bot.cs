@@ -17,8 +17,7 @@ namespace KakaotalkBot
 
         private Dictionary<string, WindowInfo> windowList = new Dictionary<string, WindowInfo>();
 
-        public bool isThreadRunning = false;
-        public bool isBotRunning = false;
+        public static bool IsBotRunning { get; set; }
 
         private List<string> chatLog = new List<string>();
         private string lastChat = "xx";
@@ -44,7 +43,7 @@ namespace KakaotalkBot
 
         public void Update()
         {
-            if (isBotRunning == false) return;
+            if (IsBotRunning == false) return;
 
             ProcessCopyChat();
             ProcessReset();

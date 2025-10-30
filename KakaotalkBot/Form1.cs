@@ -44,33 +44,6 @@ namespace KakaotalkBot
         }
 
 
-
-        public struct QuizAnswer
-        {
-            public string Nickname;
-            public string Answer;
-        }
-
-        private Thread thread;
-        private bool isThreadRunning = false;
-        private bool isBotRunning = false;
-
-
-        private Queue<Command> commands = new Queue<Command>();
-
-        private List<string> chatLog = new List<string>();
-        string lastChat = "xx";
-       
-
-        private DateTime lastUpdate = DateTime.MinValue;
-
-        CustomTimer soliloquyTimer = new CustomTimer(300000);
-        CustomTimer newsTimer = new CustomTimer(3600000);
-        CustomTimer dbTimer = new CustomTimer(60000);
-
-        private Queue<QuizAnswer> quizAnswers = new Queue<QuizAnswer>();
-        private bool isCorrect = false;
-
         private System.Windows.Forms.Timer timer;
 
         public Form1()
@@ -99,7 +72,7 @@ namespace KakaotalkBot
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            if(isBotRunning)
+            if(Bot.IsBotRunning)
             {
                 button2.BackColor = Color.Green;
             }
@@ -172,9 +145,6 @@ namespace KakaotalkBot
         {
             timer.Stop();
 
-            isThreadRunning = false;
-            thread.Join();
-
             UnregisterHotKey(this.Handle, 2);
             UnregisterHotKey(this.Handle, 1);
             Settings.Save(Settings.Instance);
@@ -182,7 +152,7 @@ namespace KakaotalkBot
 
         private void button2_Click(object sender, EventArgs e)
         {
-            isBotRunning = !isBotRunning;
+            Bot.IsBotRunning = !Bot.IsBotRunning;
         }
 
         private void listView1_SelectedIndexChanged(object sender, EventArgs e)
