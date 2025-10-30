@@ -15,7 +15,7 @@ namespace KakaotalkBot
 
         public static string TargetWindow = string.Empty;
 
-        private Dictionary<string, WindowInfo> windowList;
+        private Dictionary<string, WindowInfo> windowList = new Dictionary<string, WindowInfo>();
 
         public bool isThreadRunning = false;
         public bool isBotRunning = false;
