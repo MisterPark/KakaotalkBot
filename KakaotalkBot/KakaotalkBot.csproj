@@ -101,6 +101,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Article.cs" />
+    <Compile Include="Bot.cs" />
     <Compile Include="Command.cs" />
     <Compile Include="Quiz.cs" />
     <Compile Include="CustomTimer.cs" />
