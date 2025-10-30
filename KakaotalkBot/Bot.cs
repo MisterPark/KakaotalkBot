@@ -38,7 +38,7 @@ namespace KakaotalkBot
 
         public Bot()
         {
-            UpdateWindowList();
+            UpdateWindowList(); 
             random = new Random(DateTime.Now.Millisecond);
         }
 
