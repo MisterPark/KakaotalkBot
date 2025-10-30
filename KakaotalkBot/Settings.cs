@@ -5,6 +5,24 @@ namespace KakaotalkBot
 {
     public class Settings
     {
+        private static Settings instance;
+        public static Settings Instance
+        {
+            get 
+            {
+                if (instance == null)
+                {
+                    instance = Load();
+                }
+
+                return instance; 
+            }
+        }
+
+        private Settings()
+        {
+
+        }
         public string SpreadsheetId { get; set; }
         public string ApplicationName { get; set; }
 

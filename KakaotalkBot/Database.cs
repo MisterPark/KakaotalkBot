@@ -9,6 +9,20 @@ namespace KakaotalkBot
 {
     public class Database
     {
+        private static Database instance;
+        public static Database Instance
+        {
+            get
+            {
+                if (instance == null)
+                {
+                    instance = new Database();
+                }
+
+                return instance;
+            }
+        }
+
         private GoogleSheetHelper keywordSheet;
         private List<string> keywords = new List<string>();
         private List<List<string>> commands = new List<List<string>>();
@@ -32,7 +46,12 @@ namespace KakaotalkBot
         public List<Topic> Topics { get { return topics; } }
         public string[] CategoryOrder { get { return categoryOrder; } }
 
-        public Database(string applicationName, string spreadsheetId)
+        private Database()
+        {
+
+        }
+
+        public void Initialize(string applicationName, string spreadsheetId)
         {
             random = RandomNumberGenerator.Create();
             keywordSheet = new GoogleSheetHelper(applicationName, spreadsheetId);

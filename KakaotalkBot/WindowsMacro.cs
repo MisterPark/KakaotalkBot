@@ -234,7 +234,7 @@ namespace KakaotalkBot
             string text = string.Empty;
             try
             {
-                Form.Invoke((MethodInvoker)delegate { text = Clipboard.GetText(); });
+                text = Clipboard.GetText();
 
             }
             catch (Exception e)
@@ -254,7 +254,7 @@ namespace KakaotalkBot
 
             try
             {
-                Form.Invoke((MethodInvoker)delegate { Clipboard.SetText(message); });
+                Clipboard.SetText(message);
 
                 SetForegroundWindow(hwndMain);
                 Thread.Sleep(100);
