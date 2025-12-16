@@ -277,7 +277,7 @@ namespace KakaotalkBot
                     List<User> rank = Database.Instance.GetPopularityRank();
 
                     sb.AppendLine(answer);
-                    for (int i = 0; i < rank.Count; i++)
+                    for (int i = 0; i < 20; i++)
                     {
                         int currentPop = rank[i].Popularity;
                         if (currentPop != beforePop)
