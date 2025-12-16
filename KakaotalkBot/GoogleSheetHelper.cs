@@ -86,7 +86,17 @@ namespace KakaotalkBot
 
                 var updateRequest = service.Spreadsheets.Values.Update(valueRange, sheetId, sheetName);
                 updateRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
-                updateRequest.Execute();
+
+
+                try
+                {
+                    var response = updateRequest.Execute();
+
+                }
+                catch(Exception e)
+                {
+                    return;
+                }
             }
             
         }
