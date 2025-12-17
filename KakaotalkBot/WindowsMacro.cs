@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
-using System.Linq;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace KakaotalkBot
@@ -22,8 +22,30 @@ namespace KakaotalkBot
         [DllImport("user32.dll")]
         private static extern bool IsWindowVisible(IntPtr hWnd);
         [DllImport("user32.dll")]
+        static extern bool SetCursorPos(int X, int Y);
+        [DllImport("user32.dll")]
         static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+        [DllImport("user32.dll")]
+        static extern void keybd_event(
+    byte bVk,
+    byte bScan,
+    uint dwFlags,
+    UIntPtr dwExtraInfo
 
+
+);
+
+        [DllImport("user32.dll")]
+        static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
 
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -36,15 +58,32 @@ namespace KakaotalkBot
         private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
         [DllImport("user32.dll")]
         public static extern bool SendMessage(IntPtr hWnd, uint Msg, int wParam, string lParam);
+        [DllImport("user32.dll")]
+        static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+        [StructLayout(LayoutKind.Sequential)]
+        struct INPUT
+        {
+            public int type;
+            public KEYBDINPUT ki;
+        }
 
-        
+        [StructLayout(LayoutKind.Sequential)]
+        struct KEYBDINPUT
+        {
+            public ushort wVk;
+            public ushort wScan;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
 
         private static WindowsMacro instance;
         public static WindowsMacro Instance
         {
             get
             {
-                if(instance == null)
+                if (instance == null)
                 {
                     instance = new WindowsMacro();
                 }
@@ -80,6 +119,17 @@ namespace KakaotalkBot
         private const int ST_DEFAULT = 0x0000;
         private const int ST_KEEPUNDO = 0x0001;
 
+        private const int INPUT_KEYBOARD = 1;
+        private const uint KEYEVENTF_KEYUP = 0x0002;
+        private const uint KEYEVENTF_UNICODE = 0x0004;
+
+        private const ushort VK_CONTROL = 0x11;
+        const byte VK_A = 0x41;
+        private const ushort VK_V = 0x56;
+        private const byte VK_ESCAPE = 0x1B;
+        const byte VK_BACK = 0x08;
+
+
         private WindowsMacro() { }
 
         public void ClickLeft()
@@ -96,10 +146,76 @@ namespace KakaotalkBot
         {
             SendKeys.SendWait("~"); // ^ == Ctrl
         }
+
         public void SendCtrlKey(IntPtr hwnd, char key)
         {
             SetForegroundWindow(hwnd);
             SendKeys.SendWait("^" + key); // ^ == Ctrl
+        }
+
+        public void SendInput(ushort virtualKey)
+        {
+            INPUT[] inputs = new INPUT[2];
+
+            inputs[0] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                ki = new KEYBDINPUT { wVk = virtualKey }
+            };
+
+            inputs[1] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                ki = new KEYBDINPUT
+                {
+                    wVk = virtualKey,
+                    dwFlags = KEYEVENTF_KEYUP
+                }
+            };
+
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+        }
+
+        public static void Paste(string text)
+        {
+            Clipboard.SetText(text);
+
+            var inputs = new[]
+            {
+            new INPUT{ type=INPUT_KEYBOARD, ki=new KEYBDINPUT{ wVk=VK_CONTROL } },
+            new INPUT{ type=INPUT_KEYBOARD, ki=new KEYBDINPUT{ wVk=VK_V } },
+            new INPUT{ type=INPUT_KEYBOARD, ki=new KEYBDINPUT{ wVk=VK_V, dwFlags=KEYEVENTF_KEYUP } },
+            new INPUT{ type=INPUT_KEYBOARD, ki=new KEYBDINPUT{ wVk=VK_CONTROL, dwFlags=KEYEVENTF_KEYUP } },
+            };
+
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+        }
+
+        static void KeyDown(byte vk)
+        {
+            keybd_event(vk, 0, 0, UIntPtr.Zero);
+        }
+
+        static void KeyUp(byte vk)
+        {
+            keybd_event(vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        }
+
+        static void Press(byte vk)
+        {
+            KeyDown(vk);
+            KeyUp(vk);
+        }
+
+        public static void SendText(string text)
+        {
+            Clipboard.SetText(text);
+
+            KeyDown((byte)VK_CONTROL);
+            Press((byte)VK_V);
+            KeyUp((byte)VK_CONTROL);
+
+            Press(VK_RETURN);
         }
 
         public static void CloseWindow(IntPtr hwnd)
@@ -187,12 +303,33 @@ namespace KakaotalkBot
         public void OpenChatRoom(string roomName)
         {
             // 1. 카카오톡 메인 창 찾기
+            bool alreadyOpen = false;
             IntPtr hwndKakao = FindWindow(null, "카카오톡");
             if (hwndKakao == IntPtr.Zero)
             {
+                alreadyOpen = false;
                 LaunchKakaoTalk();
-                return;
             }
+            else
+            {
+                alreadyOpen = true;
+            }
+
+            while(FindWindow(null, "카카오톡")  == IntPtr.Zero)
+            {
+                Thread.Sleep(1000);
+            }
+
+            if(alreadyOpen == false)
+            {
+                Thread.Sleep(20000);
+                hwndKakao = FindWindow(null, "카카오톡");
+            }
+
+            Point p = GetWindowPos(hwndKakao);
+            SetCursorPos(p.X + 32, p.Y + 120);
+            ClickLeft();
+            Thread.Sleep(1000);
 
             // 2. 검색 Edit 컨트롤 찾아 들어가기
             IntPtr hwndEdit1 = FindWindowEx(hwndKakao, IntPtr.Zero, "EVA_ChildWindow", null);
@@ -202,18 +339,55 @@ namespace KakaotalkBot
 
             if (hwndEdit3 == IntPtr.Zero) return;
 
+            SetForegroundWindow(hwndEdit3);
+            Thread.Sleep(50);
+            // TODO: 글자 수만큼 해야함.
+            Press(VK_BACK);
+            Thread.Sleep(100);
+            Press(VK_BACK);
+            Thread.Sleep(100);
+            Press(VK_BACK);
 
-            SendMessage(hwndEdit3, WM_SETTEXT, 0, " ");
-            //Thread.Sleep(300);
-            SendReturn(hwndEdit3);
-            //Thread.Sleep(300);
+            SendText(roomName);
+            Thread.Sleep(1000);
 
-            // 3. 검색어 입력
-            SendMessage(hwndEdit3, WM_SETTEXT, 0, roomName);
-            //Thread.Sleep(500); // 안정성 확보
-            // 4. 엔터키 전송 (채팅방 열기)
-            SendReturn(hwndEdit3);
-            //Thread.Sleep(100);
+            SetCursorPos(p.X + 195, p.Y + 120);
+            ClickLeft();
+            Thread.Sleep(50);
+            ClickLeft();
+
+            Thread.Sleep(1000);
+
+            CloseChatRoom(roomName);
+
+            SetCursorPos(p.X + 195, p.Y + 120);
+            ClickLeft();
+            Thread.Sleep(50);
+            ClickLeft();
+
+        }
+
+        public void CloseWindow(string windowName)
+        {
+            IntPtr hWnd = FindWindow(null, windowName);
+
+            if (hWnd != IntPtr.Zero)
+            {
+                PostMessage(hWnd, WM_CLOSE, 0, 0);
+            }
+        }
+
+        public void CloseChatRoom(string roomName)
+        {
+            IntPtr hwndMain = FindWindow(null, roomName);
+            if (hwndMain != IntPtr.Zero)
+            {
+                Point roomPos = GetWindowPos(hwndMain);
+                Point roomSize = GetWindowSize(hwndMain);
+                SetCursorPos(roomPos.X + roomSize.X - 12, roomPos.Y + 12);
+                ClickLeft();
+            }
+            
         }
 
         public string CopyChatroomText(IntPtr hwndMain)
@@ -267,6 +441,26 @@ namespace KakaotalkBot
             {
             }
 
+        }
+
+        public Point GetWindowPos(IntPtr hwnd)
+        {
+            RECT r;
+            GetWindowRect(hwnd, out r);
+            Point point = new Point();
+            point.X = r.Left;
+            point.Y = r.Top;
+            return point;
+        }
+
+        public Point GetWindowSize(IntPtr hwnd)
+        {
+            RECT r;
+            GetWindowRect(hwnd, out r);
+            Point point = new Point();
+            point.X = r.Right - r.Left;
+            point.Y = r.Bottom - r.Top;
+            return point;
         }
     }
 }

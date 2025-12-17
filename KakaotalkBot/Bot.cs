@@ -13,11 +13,23 @@ namespace KakaotalkBot
             public string Answer;
         }
 
-        public static string TargetWindow = string.Empty;
+        public string TargetWindow { get; set; } = string.Empty;
 
         private Dictionary<string, WindowInfo> windowList = new Dictionary<string, WindowInfo>();
 
-        public static bool IsBotRunning { get; set; }
+        private bool isBotRunning = false;
+        public bool IsBotRunning
+        {
+            get { return isBotRunning; }
+            set
+            {
+                isBotRunning = value;
+                if(value == false)
+                {
+                    Reset();
+                }
+            }
+        }
 
         private List<string> chatLog = new List<string>();
         private string lastChat = "xx";
@@ -68,7 +80,7 @@ namespace KakaotalkBot
             ProcessQuiz();
         }
 
-        private void UpdateWindowList()
+        public void UpdateWindowList()
         {
             windowList.Clear();
             var list = WindowsMacro.Instance.GetWindowList();
@@ -81,11 +93,39 @@ namespace KakaotalkBot
             }
         }
 
+        public void Start()
+        {
+            UpdateWindowList();
+            isBotRunning = true;
+        }
+
+        public void Stop()
+        {
+            isBotRunning = false;
+        }
+
+        public void Reset()
+        {
+            chatLog = new List<string>();
+            lastChat = "xx";
+            commands.Clear();
+            quizAnswers.Clear();
+            isCorrect = false;
+            soliloquyTimer = new CustomTimer(300000);
+            newsTimer = new CustomTimer(3600000);
+            dbTimer = new CustomTimer(60000);
+        }
+
         private void ProcessCopyChat()
         {
             if (string.IsNullOrEmpty(TargetWindow)) return;
 
-            IntPtr handle = windowList[TargetWindow].Handle;
+            if(windowList.TryGetValue(TargetWindow, out var window) == false)
+            {
+                return;
+            }
+
+            IntPtr handle = window.Handle;
 
             string chat = WindowsMacro.Instance.CopyChatroomText(handle);
             string[] lines = chat.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);

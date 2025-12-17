@@ -16,11 +16,12 @@ namespace KakaotalkBot
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            
+            Bot bot = new Bot();
 
-            Form1 form = new Form1();
+            Form1 form = new Form1(bot);
             form.Show();
 
-            Bot bot = new Bot();
 
             NativeMessage msg;
             while (true)

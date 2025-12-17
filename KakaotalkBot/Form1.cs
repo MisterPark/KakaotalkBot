@@ -45,9 +45,13 @@ namespace KakaotalkBot
 
 
         private System.Windows.Forms.Timer timer;
+        private Bot bot;
+        private DateTime lastBotResetTime;
 
-        public Form1()
+        public Form1(Bot bot)
         {
+            lastBotResetTime = DateTime.Now;
+            this.bot = bot;
             instance = this;
             InitializeComponent();
 
@@ -72,13 +76,32 @@ namespace KakaotalkBot
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            if(Bot.IsBotRunning)
+            if(bot.IsBotRunning)
             {
                 button2.BackColor = Color.Green;
             }
             else
             {
                 button2.BackColor = Color.Red;
+            }
+
+            label3.Text = lastBotResetTime.Ticks.ToString();
+            label4.Text = DateTime.Now.Ticks.ToString();
+
+            if((DateTime.Now - lastBotResetTime).TotalSeconds >= 120)
+            {
+                lastBotResetTime = DateTime.Now;
+
+                WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 원활한 사용을 위해 봇이 재기동됩니다.\n(1분 정도 소요됨.)\n(PC카톡을 쓰레기처럼 만들어서 그런거임. 내 탓 아님.)");
+
+                bot.Stop();
+                WindowsMacro.Instance.CloseChatRoom(bot.TargetWindow);
+                Thread.Sleep(1000);
+                WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
+                Thread.Sleep(1000);
+                bot.Start();
+
+                WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 코몽봇이 다시 시작되었습니다.");
             }
         }
 
@@ -152,7 +175,8 @@ namespace KakaotalkBot
 
         private void button2_Click(object sender, EventArgs e)
         {
-            Bot.IsBotRunning = !Bot.IsBotRunning;
+            bot.UpdateWindowList();
+            bot.IsBotRunning = !bot.IsBotRunning;
         }
 
         private void listView1_SelectedIndexChanged(object sender, EventArgs e)
@@ -161,7 +185,7 @@ namespace KakaotalkBot
 
             string roomName = listView1.SelectedItems[0].SubItems[0].Text;
             textBox1.Text = roomName;
-            Bot.TargetWindow = roomName;
+            bot.TargetWindow = roomName;
         }
 
         private void button3_Click(object sender, EventArgs e)
@@ -186,8 +210,32 @@ namespace KakaotalkBot
 
         private void button6_Click(object sender, EventArgs e)
         {
-            //WindowsMacro.Instance.SendTextToChatroom(textBox1.Text, $"{News.PoliticsTop6}");
-            
+            if (bot.IsBotRunning && string.IsNullOrEmpty(bot.TargetWindow) == false)
+            {
+                WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, $"o");
+                bot.IsBotRunning = false;
+                //Thread.Sleep(5000);
+                WindowsMacro.Instance.CloseChatRoom(bot.TargetWindow);
+                Thread.Sleep(3000);
+
+
+                WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
+                //Thread.Sleep(5000);
+                //bot.UpdateWindowList();
+                //bot.IsBotRunning = true;
+                //WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, $"[시스템] 코몽봇 껐켰 테스트 종료");
+            }
+
+        }
+
+        private void button7_Click(object sender, EventArgs e)
+        {
+            WindowsMacro.Instance.CloseChatRoom("흑우방");
+        }
+
+        private void Form1_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            Application.Exit();
         }
     }
 }
