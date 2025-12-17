@@ -88,7 +88,7 @@ namespace KakaotalkBot
             label3.Text = lastBotResetTime.Ticks.ToString();
             label4.Text = DateTime.Now.Ticks.ToString();
 
-            if((DateTime.Now - lastBotResetTime).TotalSeconds >= 120)
+            if((DateTime.Now - lastBotResetTime).TotalSeconds >= 21600)
             {
                 lastBotResetTime = DateTime.Now;
 
