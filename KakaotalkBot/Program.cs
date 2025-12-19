@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace KakaotalkBot
@@ -18,6 +19,7 @@ namespace KakaotalkBot
             Application.SetCompatibleTextRenderingDefault(false);
             
             Bot bot = new Bot();
+            CustomTimer rebootTimer = new CustomTimer(14400000);
 
             Form1 form = new Form1(bot);
             form.Show();
@@ -37,6 +39,17 @@ namespace KakaotalkBot
                 else
                 {
                     Time.Update();
+                    if(rebootTimer.Check(Time.DeltaTime))
+                    {
+                        WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 원활한 사용을 위해 봇이 재기동됩니다.\n(1분 정도 소요됨.)\n(PC카톡을 쓰레기처럼 만들어서 그런거임. 내 탓 아님.)");
+                        bot.Stop();
+                        WindowsMacro.Instance.CloseChatRoom(bot.TargetWindow);
+                        Thread.Sleep(1000);
+                        WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
+                        Thread.Sleep(1000);
+                        bot.Start();
+                        WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 코몽봇이 다시 시작되었습니다.");
+                    }
                     bot.Update();
                     System.Threading.Thread.Sleep(0);
                 }

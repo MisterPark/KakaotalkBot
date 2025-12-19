@@ -85,24 +85,9 @@ namespace KakaotalkBot
                 button2.BackColor = Color.Red;
             }
 
-            label3.Text = lastBotResetTime.Ticks.ToString();
-            label4.Text = DateTime.Now.Ticks.ToString();
+            label3.Text = lastBotResetTime.ToString("HH:mm:ss");
+            label4.Text = DateTime.Now.ToString("HH:mm:ss");
 
-            if((DateTime.Now - lastBotResetTime).TotalSeconds >= 21600)
-            {
-                lastBotResetTime = DateTime.Now;
-
-                WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 원활한 사용을 위해 봇이 재기동됩니다.\n(1분 정도 소요됨.)\n(PC카톡을 쓰레기처럼 만들어서 그런거임. 내 탓 아님.)");
-
-                bot.Stop();
-                WindowsMacro.Instance.CloseChatRoom(bot.TargetWindow);
-                Thread.Sleep(1000);
-                WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
-                Thread.Sleep(1000);
-                bot.Start();
-
-                WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 코몽봇이 다시 시작되었습니다.");
-            }
         }
 
         private void OnApplicationExit(object sender, EventArgs e)
