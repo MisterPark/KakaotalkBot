@@ -22,6 +22,8 @@ namespace KakaotalkBot
         [DllImport("user32.dll")]
         private static extern bool IsWindowVisible(IntPtr hWnd);
         [DllImport("user32.dll")]
+        static extern bool GetCursorPos(out POINT lpPoint);
+        [DllImport("user32.dll")]
         static extern bool SetCursorPos(int X, int Y);
         [DllImport("user32.dll")]
         static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
@@ -60,6 +62,22 @@ namespace KakaotalkBot
         public static extern bool SendMessage(IntPtr hWnd, uint Msg, int wParam, string lParam);
         [DllImport("user32.dll")]
         static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+        [DllImport("user32.dll")]
+        static extern IntPtr GetDC(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        static extern uint GetPixel(IntPtr hdc, int x, int y);
+
+
+        struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         struct INPUT
         {
@@ -461,6 +479,25 @@ namespace KakaotalkBot
             point.X = r.Right - r.Left;
             point.Y = r.Bottom - r.Top;
             return point;
+        }
+
+        public static Color GetScreenPixelColor(int x, int y)
+        {
+            IntPtr hdc = GetDC(IntPtr.Zero);
+            uint pixel = GetPixel(hdc, x, y);
+            ReleaseDC(IntPtr.Zero, hdc);
+
+            return Color.FromArgb(
+                (int)(pixel & 0x000000FF),
+                (int)(pixel & 0x0000FF00) >> 8,
+                (int)(pixel & 0x00FF0000) >> 16
+            );
+        }
+
+        public Point GetCursorPos()
+        {
+            GetCursorPos(out POINT p);
+            return new Point(p.X, p.Y);
         }
     }
 }
