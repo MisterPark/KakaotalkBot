@@ -245,7 +245,7 @@ namespace KakaotalkBot
 
         public static void LaunchKakaoTalk()
         {
-            string kakaoPath = @"C:\Program Files (x86)\Kakao\KakaoTalk\KakaoTalk.exe";
+            string kakaoPath = @"C:\Program Files\Kakao\KakaoTalk\KakaoTalk.exe";
 
             try
             {
