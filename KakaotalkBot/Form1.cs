@@ -69,8 +69,6 @@ namespace KakaotalkBot
 
             UpdateWindowList();
 
-            ScreenPixelDetector.Instance.AddListener(() => { MessageBox.Show("체크"); });
-
         }
 
         private void Timer_Tick(object sender, EventArgs e)
