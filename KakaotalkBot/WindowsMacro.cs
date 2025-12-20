@@ -317,6 +317,27 @@ namespace KakaotalkBot
             return handle;
         }
 
+        public bool IsKakaoTalkOpen()
+        {
+            IntPtr hwndKakao = FindWindow(null, "카카오톡");
+
+            return hwndKakao != IntPtr.Zero;
+        }
+
+        public bool IsChatRoomOpen(string roomName)
+        {
+            List<WindowInfo> list = GetWindowList();
+            foreach (WindowInfo windowInfo in list)
+            {
+                if(windowInfo.Title == roomName)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public void OpenChatRoom(string roomName)
         {
             // 1. 카카오톡 메인 창 찾기
