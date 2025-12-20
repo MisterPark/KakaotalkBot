@@ -10,10 +10,11 @@ namespace KakaotalkBot
         public DateTime AttendanceAt = DateTime.MinValue;
         public int Point = 0;
         public int Popularity = 0;
+        public string Password = "0000";
 
         public List<object> ToRow()
         {
-            return new List<object>() { Nickname, TakeAttendance, AttendanceAt, Point, Popularity };
+            return new List<object>() { Nickname, TakeAttendance, AttendanceAt, Point, Popularity , Password};
         }
 
         public static User ToUser(List<string> list)
@@ -24,6 +25,7 @@ namespace KakaotalkBot
             user.AttendanceAt = DateTime.Parse(list[2]);
             user.Point = Convert.ToInt32(list[3]);
             user.Popularity = Convert.ToInt32(list[4]);
+            user.Password = list[5];
 
             return user;
         }

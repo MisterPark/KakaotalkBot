@@ -58,6 +58,7 @@
             this.button8 = new System.Windows.Forms.Button();
             this.numericUpDown1 = new System.Windows.Forms.NumericUpDown();
             this.numericUpDown2 = new System.Windows.Forms.NumericUpDown();
+            this.richTextBox2 = new System.Windows.Forms.RichTextBox();
             this.tabControl1.SuspendLayout();
             this.tabPage1.SuspendLayout();
             this.tabPage2.SuspendLayout();
@@ -145,6 +146,7 @@
             // 
             // tabPage2
             // 
+            this.tabPage2.Controls.Add(this.richTextBox2);
             this.tabPage2.Controls.Add(this.numericUpDown2);
             this.tabPage2.Controls.Add(this.numericUpDown1);
             this.tabPage2.Controls.Add(this.button8);
@@ -172,7 +174,7 @@
             // 
             // button6
             // 
-            this.button6.Location = new System.Drawing.Point(492, 310);
+            this.button6.Location = new System.Drawing.Point(712, 24);
             this.button6.Name = "button6";
             this.button6.Size = new System.Drawing.Size(75, 23);
             this.button6.TabIndex = 10;
@@ -281,7 +283,7 @@
             // 
             // button7
             // 
-            this.button7.Location = new System.Drawing.Point(492, 348);
+            this.button7.Location = new System.Drawing.Point(712, 62);
             this.button7.Name = "button7";
             this.button7.Size = new System.Drawing.Size(75, 23);
             this.button7.TabIndex = 11;
@@ -350,6 +352,16 @@
             this.numericUpDown2.Size = new System.Drawing.Size(68, 21);
             this.numericUpDown2.TabIndex = 17;
             // 
+            // richTextBox2
+            // 
+            this.richTextBox2.BackColor = System.Drawing.SystemColors.WindowFrame;
+            this.richTextBox2.Font = new System.Drawing.Font("돋움체", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(129)));
+            this.richTextBox2.Location = new System.Drawing.Point(428, 277);
+            this.richTextBox2.Name = "richTextBox2";
+            this.richTextBox2.Size = new System.Drawing.Size(385, 265);
+            this.richTextBox2.TabIndex = 18;
+            this.richTextBox2.Text = "";
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 12F);
@@ -404,6 +416,7 @@
         private System.Windows.Forms.NumericUpDown numericUpDown2;
         private System.Windows.Forms.NumericUpDown numericUpDown1;
         private System.Windows.Forms.Button button8;
+        private System.Windows.Forms.RichTextBox richTextBox2;
     }
 }
 

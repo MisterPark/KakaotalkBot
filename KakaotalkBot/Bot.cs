@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -18,6 +17,7 @@ namespace KakaotalkBot
             public string Nickname;
             public string Answer;
         }
+
 
         public string TargetWindow { get; set; } = string.Empty;
 
@@ -54,6 +54,9 @@ namespace KakaotalkBot
         private bool isCorrect = false;
 
         public Queue<Chat> DirectMessages = new Queue<Chat>();
+
+        private Dictionary<string, string> passwordVerificationList = new Dictionary<string, string>();
+        private Dictionary<string, string> passwordChangeList = new Dictionary<string, string>();
 
         public Bot()
         {
@@ -546,6 +549,14 @@ namespace KakaotalkBot
             {
                 ProcessCommonSense();
             }
+            else if (command.Keyword == "/암호검증")
+            {
+                ProcessVerifyPassword(command.Nickname);
+            }
+            else if (command.Keyword == "/암호변경")
+            {
+                ProcessChangePassword(command.Nickname);
+            }
             else
             {
                 string[] answers = Database.Instance.GetAnswers(command.Keyword);
@@ -674,6 +685,24 @@ namespace KakaotalkBot
 
         }
 
+        private void ProcessVerifyPassword(string nickname)
+        {
+            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"암호검증");
+            if (passwordVerificationList.TryGetValue(nickname, out string a) == false)
+            {
+                passwordVerificationList.Add(nickname, "");
+            }
+        }
+
+        private void ProcessChangePassword(string nickname)
+        {
+            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"암호변경");
+            if (passwordChangeList.TryGetValue(nickname, out string a) == false)
+            {
+                passwordChangeList.Add(nickname, "");
+            }
+        }
+
         private void ProcessDirectMessage()
         {
             List<WindowInfo> kakaoChatRooms = WindowsMacro.Instance.FindAllKakaoTalkChatRoom();
@@ -684,7 +713,47 @@ namespace KakaotalkBot
                     continue;
                 }
 
-                //Chat chat = ReadLastChat(chatRoom.Handle);
+                Chat chat = ReadLastChat(chatRoom.Handle);
+
+
+                if (passwordVerificationList.ContainsKey(chat.Nickname))
+                {
+                    passwordVerificationList.Remove(chat.Nickname);
+                    if (Database.Instance.FindUser(chat.Nickname, out User user))
+                    {
+                        if (user.Password == chat.Message)
+                        {
+                            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{chat.Nickname}]\n암호가 일치합니다.");
+                        }
+                        else
+                        {
+                            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{chat.Nickname}]\n암호가 일치하지 않습니다.");
+                        }
+                    }
+                    else
+                    {
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"정보가 없는 유저입니다.");
+                    }
+                }
+                else if (passwordChangeList.ContainsKey(chat.Nickname))
+                {
+                    passwordChangeList.Remove(chat.Nickname);
+                    if (Database.Instance.FindUser(chat.Nickname, out User user))
+                    {
+                        if (user.Password == chat.Message)
+                        {
+                            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{chat.Nickname}]\n암호 변경 완료.");
+                        }
+                        else
+                        {
+                            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{chat.Nickname}]\n암호가 일치하지 않습니다.");
+                        }
+                    }
+                    else
+                    {
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"정보가 없는 유저입니다.");
+                    }
+                }
                 //DirectMessages.Enqueue(chat);
 
                 WindowsMacro.Instance.CloseChatRoom(chatRoom.Handle);
