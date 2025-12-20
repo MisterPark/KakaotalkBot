@@ -1,11 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -72,11 +69,13 @@ namespace KakaotalkBot
 
             UpdateWindowList();
 
+            ScreenPixelDetector.Instance.AddListener(() => { MessageBox.Show("체크"); });
+
         }
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            if(bot.IsBotRunning)
+            if (bot.IsBotRunning)
             {
                 button2.BackColor = Color.Green;
             }
@@ -224,6 +223,23 @@ namespace KakaotalkBot
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
             Application.Exit();
+        }
+
+        private void button8_Click(object sender, EventArgs e)
+        {
+            int x = (int)numericUpDown1.Value;
+            int y = (int)numericUpDown2.Value;
+
+            if (ScreenPixelDetector.Instance.IsRunning)
+            {
+                ScreenPixelDetector.Instance.Stop();
+            }
+            else
+            {
+                ScreenPixelDetector.Instance.Start(x, y);
+            }
+
+
         }
     }
 }
