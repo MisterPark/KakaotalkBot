@@ -768,6 +768,7 @@ namespace KakaotalkBot
                     if (Database.Instance.FindUser(chat.Nickname, out User user))
                     {
                         user.Password = chat.Message;
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{chat.Nickname}]\n암호가 변경되었습니다.");
                     }
                     else
                     {
