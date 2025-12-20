@@ -407,6 +407,17 @@ namespace KakaotalkBot
 
         }
 
+        public void CloseChatRoom(IntPtr room)
+        {
+            if (room != IntPtr.Zero)
+            {
+                Point roomPos = GetWindowPos(room);
+                Point roomSize = GetWindowSize(room);
+                SetCursorPos(roomPos.X + roomSize.X - 12, roomPos.Y + 12);
+                ClickLeft();
+            }
+        }
+
         public string CopyChatroomText(IntPtr hwndMain)
         {
             IntPtr hwndList = FindWindowEx(hwndMain, IntPtr.Zero, "EVA_VH_ListControl_Dblclk", null);
@@ -502,6 +513,34 @@ namespace KakaotalkBot
         public void SetCursor(int x, int y)
         {
             SetCursorPos(x, y);
+        }
+
+        public bool IsKakaoTalkChatRoom(IntPtr hwnd)
+        {
+            IntPtr hwnd1 = FindWindowEx(hwnd, IntPtr.Zero, "RICHEDIT50W", null);
+            if (hwnd1 == IntPtr.Zero) return false;
+            IntPtr hwnd2 = FindWindowEx(hwnd, IntPtr.Zero, "EVA_VH_ListControl_Dblclk", null);
+            if (hwnd2 == IntPtr.Zero) return false;
+            IntPtr hwnd3 = FindWindowEx(hwnd, IntPtr.Zero, "Edit", null);
+            if (hwnd3 == IntPtr.Zero) return false;
+
+            return true;
+        }
+
+        public List<WindowInfo> FindAllKakaoTalkChatRoom()
+        {
+            List<WindowInfo> result = new List<WindowInfo>();
+
+            var list = WindowsMacro.Instance.GetWindowList();
+            foreach (var window in list)
+            {
+                if (WindowsMacro.Instance.IsKakaoTalkChatRoom(window.Handle))
+                {
+                    result.Add(window);
+                }
+            }
+
+            return result;
         }
     }
 }

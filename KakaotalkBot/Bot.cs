@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,6 +8,11 @@ namespace KakaotalkBot
 {
     public class Bot
     {
+        public struct Chat
+        {
+            public string Nickname;
+            public string Message;
+        }
         public struct QuizAnswer
         {
             public string Nickname;
@@ -24,7 +30,7 @@ namespace KakaotalkBot
             set
             {
                 isBotRunning = value;
-                if(value == false)
+                if (value == false)
                 {
                     Reset();
                 }
@@ -47,9 +53,11 @@ namespace KakaotalkBot
 
         private bool isCorrect = false;
 
+        public Queue<Chat> DirectMessages = new Queue<Chat>();
+
         public Bot()
         {
-            UpdateWindowList(); 
+            UpdateWindowList();
             random = new Random(DateTime.Now.Millisecond);
         }
 
@@ -78,6 +86,7 @@ namespace KakaotalkBot
             }
 
             ProcessQuiz();
+            ProcessDirectMessage();
         }
 
         public void UpdateWindowList()
@@ -86,7 +95,7 @@ namespace KakaotalkBot
             var list = WindowsMacro.Instance.GetWindowList();
             foreach (var window in list)
             {
-                if(windowList.ContainsKey(window.Title) == false)
+                if (windowList.ContainsKey(window.Title) == false)
                 {
                     windowList.Add(window.Title, window);
                 }
@@ -120,7 +129,7 @@ namespace KakaotalkBot
         {
             if (string.IsNullOrEmpty(TargetWindow)) return;
 
-            if(windowList.TryGetValue(TargetWindow, out var window) == false)
+            if (windowList.TryGetValue(TargetWindow, out var window) == false)
             {
                 return;
             }
@@ -197,6 +206,39 @@ namespace KakaotalkBot
             ProcessCommand();
 
             Form1.Instance.UpdateChatLog(string.Join("\n", chatLog));
+        }
+
+        public Chat ReadLastChat(IntPtr handle)
+        {
+            Chat data = new Chat();
+            data.Nickname = string.Empty;
+            data.Message = string.Empty;
+
+            if (handle == IntPtr.Zero) return data;
+
+            string chat = WindowsMacro.Instance.CopyChatroomText(handle);
+            string[] lines = chat.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+
+            List<string> chatLog = lines.Where(x => !string.IsNullOrEmpty(x)).ToList();
+            if (chatLog.Count == 0) return data;
+
+            string line = chatLog.Last();
+
+            int firstClose = line.IndexOf(']');
+            int secondClose = line.IndexOf(']', firstClose + 1);
+
+            if (firstClose != -1 && secondClose != -1 && secondClose + 2 <= line.Length)
+            {
+                string nickname = line.Substring(1, firstClose - 1).Trim();
+                string message = line.Substring(secondClose + 2).Trim();
+
+                data.Nickname = nickname;
+                data.Message = message;
+
+                return data;
+            }
+
+            return data;
         }
 
         private void ProcessKeyword(string nickname, string message)
@@ -630,6 +672,23 @@ namespace KakaotalkBot
 
             quizAnswers.Clear();
 
+        }
+
+        private void ProcessDirectMessage()
+        {
+            List<WindowInfo> kakaoChatRooms = WindowsMacro.Instance.FindAllKakaoTalkChatRoom();
+            foreach (var chatRoom in kakaoChatRooms)
+            {
+                if (chatRoom.Title == TargetWindow)
+                {
+                    continue;
+                }
+
+                //Chat chat = ReadLastChat(chatRoom.Handle);
+                //DirectMessages.Enqueue(chat);
+
+                WindowsMacro.Instance.CloseChatRoom(chatRoom.Handle);
+            }
         }
     }
 }

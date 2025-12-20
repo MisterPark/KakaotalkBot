@@ -20,6 +20,8 @@ namespace KakaotalkBot
 
         [DllImport("user32.dll")]
         private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+        [DllImport("user32.dll")]
+        private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
 
         private const int WM_HOTKEY = 0x0312;
 
@@ -242,6 +244,8 @@ namespace KakaotalkBot
                     Thread.Sleep(50);
                     WindowsMacro.Instance.ClickLeft();
                     Thread.Sleep(50);
+
+                    
                 });
 
                 ScreenPixelDetector.Instance.Start(x, y);
