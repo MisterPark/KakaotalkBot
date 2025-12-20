@@ -19,6 +19,7 @@ namespace KakaotalkBot
             Application.SetCompatibleTextRenderingDefault(false);
 
             Bot bot = new Bot();
+            bot.TargetWindow = "흑우방";
             CustomTimer rebootTimer = new CustomTimer(14400000);
 
             Form1 form = new Form1(bot);
@@ -41,14 +42,17 @@ namespace KakaotalkBot
                 {
                     Time.Update();
 
-                    if (WindowsMacro.Instance.IsKakaoTalkOpen() == false)
+                    if(string.IsNullOrEmpty(bot.TargetWindow) == false)
                     {
-                        WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
-                    }
+                        if (WindowsMacro.Instance.IsKakaoTalkOpen() == false)
+                        {
+                            WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
+                        }
 
-                    if (WindowsMacro.Instance.IsChatRoomOpen(bot.TargetWindow) == false)
-                    {
-                        WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
+                        if (WindowsMacro.Instance.IsChatRoomOpen(bot.TargetWindow) == false)
+                        {
+                            WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
+                        }
                     }
 
                     if (rebootTimer.Check(Time.DeltaTime))
