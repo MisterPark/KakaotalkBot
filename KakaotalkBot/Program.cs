@@ -49,6 +49,7 @@ namespace KakaotalkBot
                             WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
                             Thread.Sleep(1000);
                             bot.UpdateWindowList();
+                            WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 코몽봇이 다시 시작되었습니다.");
                         }
 
                         if (WindowsMacro.Instance.IsChatRoomOpen(bot.TargetWindow) == false)
@@ -56,6 +57,7 @@ namespace KakaotalkBot
                             WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
                             Thread.Sleep(1000);
                             bot.UpdateWindowList();
+                            WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 코몽봇이 다시 시작되었습니다.");
                         }
                     }
 
