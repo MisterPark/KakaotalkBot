@@ -24,13 +24,7 @@ namespace KakaotalkBot
             Form1 form = new Form1(bot);
             form.Show();
 
-            ScreenPixelDetector.Instance.AddListener(() => 
-            {
-                WindowsMacro.Instance.ClickLeft();
-                Thread.Sleep(50);
-                WindowsMacro.Instance.ClickLeft();
-                Thread.Sleep(50);
-            });
+            
 
             NativeMessage msg;
             while (true)

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -333,12 +332,12 @@ namespace KakaotalkBot
                 alreadyOpen = true;
             }
 
-            while(FindWindow(null, "카카오톡")  == IntPtr.Zero)
+            while (FindWindow(null, "카카오톡") == IntPtr.Zero)
             {
                 Thread.Sleep(1000);
             }
 
-            if(alreadyOpen == false)
+            if (alreadyOpen == false)
             {
                 Thread.Sleep(20000);
                 hwndKakao = FindWindow(null, "카카오톡");
@@ -405,7 +404,7 @@ namespace KakaotalkBot
                 SetCursorPos(roomPos.X + roomSize.X - 12, roomPos.Y + 12);
                 ClickLeft();
             }
-            
+
         }
 
         public string CopyChatroomText(IntPtr hwndMain)
@@ -498,6 +497,11 @@ namespace KakaotalkBot
         {
             GetCursorPos(out POINT p);
             return new Point(p.X, p.Y);
+        }
+
+        public void SetCursor(int x, int y)
+        {
+            SetCursorPos(x, y);
         }
     }
 }

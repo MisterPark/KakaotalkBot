@@ -234,6 +234,16 @@ namespace KakaotalkBot
             }
             else
             {
+
+                ScreenPixelDetector.Instance.AddListener(() =>
+                {
+                    WindowsMacro.Instance.SetCursor(x, y);
+                    WindowsMacro.Instance.ClickLeft();
+                    Thread.Sleep(50);
+                    WindowsMacro.Instance.ClickLeft();
+                    Thread.Sleep(50);
+                });
+
                 ScreenPixelDetector.Instance.Start(x, y);
             }
 
