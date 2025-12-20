@@ -57,6 +57,7 @@ namespace KakaotalkBot
 
         private Dictionary<string, string> passwordVerificationList = new Dictionary<string, string>();
         private Dictionary<string, string> passwordChangeList = new Dictionary<string, string>();
+        private Dictionary<string, string> passwordChangeList2 = new Dictionary<string, string>();
 
         public Bot()
         {
@@ -687,7 +688,8 @@ namespace KakaotalkBot
 
         private void ProcessVerifyPassword(string nickname)
         {
-            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"암호검증");
+            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, 
+                $"[암호검증 방법]\n코몽봇에게 1대1 메세지로 암호를 보내세요.\n(동일한 닉네임으로 보내야 합니다.)");
             if (passwordVerificationList.TryGetValue(nickname, out string a) == false)
             {
                 passwordVerificationList.Add(nickname, "");
@@ -696,7 +698,8 @@ namespace KakaotalkBot
 
         private void ProcessChangePassword(string nickname)
         {
-            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"암호변경");
+            WindowsMacro.Instance.SendTextToChatroom(TargetWindow,
+                $"[{nickname}]\n암호변경 프로세스 시작:\n코몽봇에게 1대1 메세지로 암호를 보내세요.");
             if (passwordChangeList.TryGetValue(nickname, out string a) == false)
             {
                 passwordChangeList.Add(nickname, "");
@@ -742,12 +745,29 @@ namespace KakaotalkBot
                     {
                         if (user.Password == chat.Message)
                         {
-                            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{chat.Nickname}]\n암호 변경 완료.");
+                            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{chat.Nickname}]\n변경할 암호를 1대1 메세지로 보내주세요.");
+
+                            if(passwordChangeList2.ContainsKey(chat.Nickname) == false)
+                            {
+                                passwordChangeList2.Add(chat.Nickname, "");
+                            }
                         }
                         else
                         {
                             WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{chat.Nickname}]\n암호가 일치하지 않습니다.");
                         }
+                    }
+                    else
+                    {
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"정보가 없는 유저입니다.");
+                    }
+                }
+                else if (passwordChangeList2.ContainsKey(chat.Nickname))
+                {
+                    passwordChangeList2.Remove(chat.Nickname);
+                    if (Database.Instance.FindUser(chat.Nickname, out User user))
+                    {
+                        user.Password = chat.Message;
                     }
                     else
                     {
