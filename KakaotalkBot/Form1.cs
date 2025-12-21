@@ -87,8 +87,8 @@ namespace KakaotalkBot
             label3.Text = lastBotResetTime.ToString("HH:mm:ss");
             label4.Text = DateTime.Now.ToString("HH:mm:ss");
 
-            Point p = WindowsMacro.Instance.GetCursorPos();
-            label5.Text = $"[{p.X}, {p.Y}]";
+            //Point p = WindowsMacro.Instance.GetCursorPos();
+            //label5.Text = $"[{p.X}, {p.Y}]";
 
         }
 
