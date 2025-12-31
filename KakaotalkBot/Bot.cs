@@ -334,8 +334,8 @@ namespace KakaotalkBot
                     if (Database.Instance.FindUser(command.Nickname, out User user))
                     {
                         int totalContribution = Database.Instance.GetTotalContribution();
-                        int totalContribution2 = totalContribution == 0 ? 1 : totalContribution;
-                        int userContribution = user.Contribution / totalContribution2 * 100;
+                        float totalContribution2 = totalContribution == 0 ? 1 : totalContribution;
+                        float userContribution = user.Contribution / totalContribution2 * 100;
                         WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n채팅 기여도: {userContribution}%\n=================");
                     }
                     else
@@ -350,8 +350,8 @@ namespace KakaotalkBot
                     if (Database.Instance.FindUser(param, out User user))
                     {
                         int totalContribution = Database.Instance.GetTotalContribution();
-                        int totalContribution2 = totalContribution == 0 ? 1 : totalContribution;
-                        int userContribution = user.Contribution / totalContribution2 * 100;
+                        float totalContribution2 = totalContribution == 0 ? 1 : totalContribution;
+                        float userContribution = user.Contribution / totalContribution2 * 100;
                         WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n채팅 기여도: {userContribution}%\n=================");
                     }
                     else
@@ -803,12 +803,12 @@ namespace KakaotalkBot
             int beforePop = 0;
             List<User> rank = Database.Instance.GetContributionRank();
             int totalContribution = Database.Instance.GetTotalContribution();
-            int totalContribution2 = totalContribution == 0 ? 1 : totalContribution;
+            float totalContribution2 = totalContribution == 0 ? 1 : totalContribution;
 
             sb.AppendLine("채팅 기여도 랭킹");
             for (int i = 0; i < 20; i++)
             {
-                int userContribution = rank[i].Contribution / totalContribution2 * 100;
+                float userContribution = rank[i].Contribution / totalContribution2 * 100;
                 int currentPop = rank[i].Contribution;
                 if (currentPop != beforePop)
                 {
