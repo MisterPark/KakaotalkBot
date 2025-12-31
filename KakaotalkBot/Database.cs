@@ -46,6 +46,7 @@ namespace KakaotalkBot
         public List<Topic> Topics { get { return topics; } }
         public string[] CategoryOrder { get { return categoryOrder; } }
 
+
         private Database()
         {
 
@@ -284,6 +285,21 @@ namespace KakaotalkBot
         public List<Topic> GetOrderedTopics()
         {
             return topics.OrderByDescending(x => x.CreatedAt).OrderBy(x => Array.IndexOf(categoryOrder, x.Category)).ToList();
+        }
+
+        public int GetTotalContribution()
+        {
+            int totalContribution = 0;
+            foreach(User user in userTable)
+            {
+                totalContribution += user.Contribution;
+            }
+            return totalContribution;
+        }
+
+        public List<User> GetContributionRank()
+        {
+            return userTable.OrderByDescending(x => x.Contribution).ToList();
         }
     }
 }

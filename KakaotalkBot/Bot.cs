@@ -261,6 +261,11 @@ namespace KakaotalkBot
             quizAnswer.Nickname = nickname;
             quizAnswer.Answer = answer;
             quizAnswers.Enqueue(quizAnswer);
+
+            if(Database.Instance.FindUser(nickname,out User user))
+            {
+                user.Contribution += 1;
+            }
         }
 
         private void ProcessCommand()
@@ -328,7 +333,10 @@ namespace KakaotalkBot
                 {
                     if (Database.Instance.FindUser(command.Nickname, out User user))
                     {
-                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n=================");
+                        int totalContribution = Database.Instance.GetTotalContribution();
+                        int totalContribution2 = totalContribution == 0 ? 1 : totalContribution;
+                        int userContribution = user.Contribution / totalContribution2 * 100;
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n채팅 기여도: {userContribution}%\n=================");
                     }
                     else
                     {
@@ -341,7 +349,10 @@ namespace KakaotalkBot
                     param = param.Replace("@", "");
                     if (Database.Instance.FindUser(param, out User user))
                     {
-                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n=================");
+                        int totalContribution = Database.Instance.GetTotalContribution();
+                        int totalContribution2 = totalContribution == 0 ? 1 : totalContribution;
+                        int userContribution = user.Contribution / totalContribution2 * 100;
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"=====[유저조회]=====\n닉네임: {user.Nickname}\n포인트: {user.Point}\n인기도: {user.Popularity}\n채팅 기여도: {userContribution}%\n=================");
                     }
                     else
                     {
@@ -557,6 +568,10 @@ namespace KakaotalkBot
             else if (command.Keyword == "/암호변경")
             {
                 ProcessChangePassword(command.Nickname);
+            }
+            else if (command.Keyword == "/채팅랭킹")
+            {
+                ProcessContribution();
             }
             else
             {
@@ -779,6 +794,47 @@ namespace KakaotalkBot
 
                 WindowsMacro.Instance.CloseChatRoom(chatRoom.Handle);
             }
+        }
+
+        private void ProcessContribution()
+        {
+            StringBuilder sb = new StringBuilder();
+            int beforeRank = 1;
+            int beforePop = 0;
+            List<User> rank = Database.Instance.GetContributionRank();
+            int totalContribution = Database.Instance.GetTotalContribution();
+            int totalContribution2 = totalContribution == 0 ? 1 : totalContribution;
+
+            sb.AppendLine("채팅 기여도 랭킹");
+            for (int i = 0; i < 20; i++)
+            {
+                int userContribution = rank[i].Contribution / totalContribution2 * 100;
+                int currentPop = rank[i].Contribution;
+                if (currentPop != beforePop)
+                {
+                    beforeRank = i + 1;
+                }
+
+                string emoji = string.Empty;
+                if (beforeRank == 1)
+                {
+                    emoji = "🥇";
+                }
+                else if (beforeRank == 2)
+                {
+                    emoji = "🥈";
+                }
+                else if (beforeRank == 3)
+                {
+                    emoji = "🥉";
+                }
+
+                sb.AppendLine($"{emoji}{beforeRank}위 {rank[i].Nickname} {userContribution}");
+
+                beforePop = currentPop;
+            }
+
+            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, sb.ToString());
         }
     }
 }

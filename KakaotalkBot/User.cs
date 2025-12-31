@@ -11,10 +11,11 @@ namespace KakaotalkBot
         public int Point = 0;
         public int Popularity = 0;
         public string Password = "0000";
+        public int Contribution = 0;
 
         public List<object> ToRow()
         {
-            return new List<object>() { Nickname, TakeAttendance, AttendanceAt, Point, Popularity , Password};
+            return new List<object>() { Nickname, TakeAttendance, AttendanceAt, Point, Popularity , Password, Contribution};
         }
 
         public static User ToUser(List<string> list)
@@ -26,6 +27,7 @@ namespace KakaotalkBot
             user.Point = Convert.ToInt32(list[3]);
             user.Popularity = Convert.ToInt32(list[4]);
             user.Password = list[5];
+            user.Contribution = Convert.ToInt32(list[6]);
 
             return user;
         }
