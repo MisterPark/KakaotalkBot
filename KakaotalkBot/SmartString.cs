@@ -74,5 +74,31 @@ namespace KakaotalkBot
         {
             return CurrentNickname;
         }
+
+        public static bool SameElements(string s1, string s2)
+        {
+            string[] a = s1.Split(new string[] { ", " }, StringSplitOptions.RemoveEmptyEntries);
+
+            string[] b = s2.Split(new string[] { ", " }, StringSplitOptions.RemoveEmptyEntries);
+
+            if (a.Length != b.Length)
+                return false;
+
+            var dict = new Dictionary<string, int>();
+
+            foreach (var s in a)
+                dict[s] = dict.TryGetValue(s, out var c) ? c + 1 : 1;
+
+            foreach (var s in b)
+            {
+                if (!dict.TryGetValue(s, out var c))
+                    return false;
+
+                if (c == 1) dict.Remove(s);
+                else dict[s] = c - 1;
+            }
+
+            return dict.Count == 0;
+        }
     }
 }

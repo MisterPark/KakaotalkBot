@@ -657,8 +657,13 @@ namespace KakaotalkBot
             {
                 QuizAnswer quizAnswer = quizAnswers.Dequeue();
 
+                string[] answers = quiz.Answer.Split(new string[] {", " }, StringSplitOptions.RemoveEmptyEntries);
 
-                if (quizAnswer.Answer == quiz.Answer)
+                string[] userAnswers = quizAnswer.Answer.Split(new string[] { ", "}, StringSplitOptions.RemoveEmptyEntries);
+
+                
+
+                if (SmartString.SameElements(quiz.Answer, quizAnswer.Answer))
                 {
                     if (Database.Instance.FindUser(quizAnswer.Nickname, out User a))
                     {
