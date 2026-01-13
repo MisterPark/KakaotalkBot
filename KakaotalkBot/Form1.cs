@@ -45,12 +45,14 @@ namespace KakaotalkBot
 
         private System.Windows.Forms.Timer timer;
         private Bot bot;
+        private VoiceRoomBot voiceRoomBot;
         private DateTime lastBotResetTime;
 
-        public Form1(Bot bot)
+        public Form1(Bot bot, VoiceRoomBot voiceRoomBot)
         {
             lastBotResetTime = DateTime.Now;
             this.bot = bot;
+
             instance = this;
             InitializeComponent();
 
@@ -70,7 +72,7 @@ namespace KakaotalkBot
             Application.ApplicationExit += new EventHandler(OnApplicationExit);
 
             UpdateWindowList();
-
+            this.voiceRoomBot = voiceRoomBot;
         }
 
         private void Timer_Tick(object sender, EventArgs e)
@@ -87,8 +89,15 @@ namespace KakaotalkBot
             label3.Text = lastBotResetTime.ToString("HH:mm:ss");
             label4.Text = DateTime.Now.ToString("HH:mm:ss");
 
-            //Point p = WindowsMacro.Instance.GetCursorPos();
-            //label5.Text = $"[{p.X}, {p.Y}]";
+            Point p = WindowsMacro.Instance.GetCursorPos();
+            label5.Text = $"[{p.X}, {p.Y}]";
+            label7.Text = $"[{p.X}, {p.Y}]";
+
+            if(voiceRoomBot.CurrentScreen != null)
+            {
+                pictureBox1.Size = new Size(voiceRoomBot.CurrentScreen.Width, voiceRoomBot.CurrentScreen.Height);
+                pictureBox1.Image = voiceRoomBot.CurrentScreen;
+            }
 
         }
 
@@ -130,6 +139,17 @@ namespace KakaotalkBot
                 if (id == 1)
                 {
                     // F5 누르면 실행할 동작
+                    if (voiceRoomBot.IsBotRunning)
+                    {
+                        voiceRoomBot.Stop();
+                    }
+                    else
+                    {
+                        int x = (int)numericUpDown3.Value;
+                        int y = (int)numericUpDown4.Value;
+                        int delay = (int)numericUpDown5.Value;
+                        voiceRoomBot.Start(x, y, delay);
+                    }
                 }
 
                 if (id == 2)
@@ -142,7 +162,17 @@ namespace KakaotalkBot
 
         private void button1_Click(object sender, System.EventArgs e)
         {
-
+            if(voiceRoomBot.IsBotRunning)
+            {
+                voiceRoomBot.Stop();
+            }
+            else
+            {
+                int x = (int)numericUpDown3.Value;
+                int y = (int)numericUpDown4.Value;
+                int delay = (int)numericUpDown5.Value;
+                voiceRoomBot.Start(x, y, delay);
+            }
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -252,6 +282,12 @@ namespace KakaotalkBot
             }
 
 
+        }
+
+        private void checkBox1_CheckedChanged(object sender, EventArgs e)
+        {
+            voiceRoomBot.IsClickMacroRunning =
+            checkBox1.Checked;
         }
     }
 }

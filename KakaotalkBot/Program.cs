@@ -22,9 +22,10 @@ namespace KakaotalkBot
             bot.TargetWindow = "흑우방";
             CustomTimer rebootTimer = new CustomTimer(14400000);
 
-            Form1 form = new Form1(bot);
-            form.Show();
+            VoiceRoomBot voiceRoomBot = new VoiceRoomBot();
 
+            Form1 form = new Form1(bot, voiceRoomBot);
+            form.Show();
 
 
             NativeMessage msg;
@@ -68,6 +69,7 @@ namespace KakaotalkBot
                         WindowsMacro.Instance.CloseChatRoom(bot.TargetWindow);
                     }
                     bot.Update();
+                    voiceRoomBot.Update();
                     System.Threading.Thread.Sleep(0);
                 }
             }

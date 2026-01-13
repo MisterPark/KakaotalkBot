@@ -123,6 +123,7 @@
     <Compile Include="Time.cs" />
     <Compile Include="Topic.cs" />
     <Compile Include="User.cs" />
+    <Compile Include="VoiceRoomBot.cs" />
     <Compile Include="WindowInfo.cs" />
     <Compile Include="WindowsMacro.cs" />
     <EmbeddedResource Include="Form1.resx">
