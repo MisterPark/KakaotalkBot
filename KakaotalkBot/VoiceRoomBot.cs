@@ -55,15 +55,15 @@ namespace KakaotalkBot
                 }
             }
 
-            if (screenCaptureTimer.Check(Time.DeltaTime))
-            {
-                ProcessCaptureScreen();
-            }
+            //if (screenCaptureTimer.Check(Time.DeltaTime))
+            //{
+            //    ProcessCaptureScreen();
+            //}
 
-            if(autoPresenterTimer.Check(Time.DeltaTime))
-            {
-                ProcessAutoPresenter();
-            }
+            //if(autoPresenterTimer.Check(Time.DeltaTime))
+            //{
+            //    ProcessAutoPresenter();
+            //}
         }
 
         public void Start(int x, int y, long delay)
