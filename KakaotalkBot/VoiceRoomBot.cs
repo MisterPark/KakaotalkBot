@@ -120,8 +120,29 @@ namespace KakaotalkBot
                 int y = at.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x, y);
                 WindowsMacro.Instance.ClickRight();
-                Thread.Sleep(1000);
+                Thread.Sleep(500);
                 WindowsMacro.Instance.SetCursor(x+20, y+20);
+                WindowsMacro.Instance.ClickLeft();
+            }
+            else
+            {
+
+            }
+
+            if (TryFindTemplate_Sampled(
+                      CurrentScreen, manager2, out var at2,
+                      tolerance: 15,
+                      searchStep: 1,
+                      gridSampleStep: 1,
+                      maxSamplePoints: 120))
+            {
+                Point pos = WindowsMacro.Instance.GetWindowPos(handle);
+                int x = at2.X + pos.X;
+                int y = at2.Y + pos.Y;
+                WindowsMacro.Instance.SetCursor(x, y);
+                WindowsMacro.Instance.ClickRight();
+                Thread.Sleep(500);
+                WindowsMacro.Instance.SetCursor(x + 20, y + 20);
                 WindowsMacro.Instance.ClickLeft();
             }
             else
