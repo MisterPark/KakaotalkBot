@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace KakaotalkBot
@@ -119,6 +120,7 @@ namespace KakaotalkBot
                 int y = at.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x, y);
                 WindowsMacro.Instance.ClickRight();
+                Thread.Sleep(1000);
                 WindowsMacro.Instance.SetCursor(x+20, y+20);
                 WindowsMacro.Instance.ClickLeft();
             }
