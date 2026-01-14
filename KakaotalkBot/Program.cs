@@ -62,7 +62,7 @@ namespace KakaotalkBot
                         }
                     }
 
-                    if (rebootTimer.Check(Time.DeltaTime))
+                    if (rebootTimer.Check(Time.DeltaTime) && bot.IsBotRunning)
                     {
                         WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 원활한 사용을 위해 봇이 재기동됩니다.\n(1분 정도 소요됨.)");
                         bot.Stop();
