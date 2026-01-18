@@ -120,6 +120,7 @@
     <Compile Include="ScreenPixelDetector.cs" />
     <Compile Include="Settings.cs" />
     <Compile Include="SmartString.cs" />
+    <Compile Include="StaticVariable.cs" />
     <Compile Include="Time.cs" />
     <Compile Include="Topic.cs" />
     <Compile Include="User.cs" />

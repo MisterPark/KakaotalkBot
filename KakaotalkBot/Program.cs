@@ -43,31 +43,35 @@ namespace KakaotalkBot
                 {
                     Time.Update();
 
-                    if(string.IsNullOrEmpty(bot.TargetWindow) == false)
+                    if(StaticVariable.AutoReboot)
                     {
-                        if (WindowsMacro.Instance.IsKakaoTalkOpen() == false)
+                        if (string.IsNullOrEmpty(bot.TargetWindow) == false)
                         {
-                            WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
-                            Thread.Sleep(1000);
-                            WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 코몽봇이 다시 시작되었습니다.");
-                            bot.Start();
+                            if (WindowsMacro.Instance.IsKakaoTalkOpen() == false)
+                            {
+                                WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
+                                Thread.Sleep(1000);
+                                WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 코몽봇이 다시 시작되었습니다.");
+                                bot.Start();
+                            }
+
+                            if (WindowsMacro.Instance.IsChatRoomOpen(bot.TargetWindow) == false)
+                            {
+                                WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
+                                Thread.Sleep(1000);
+                                WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 코몽봇이 다시 시작되었습니다.");
+                                bot.Start();
+                            }
                         }
 
-                        if (WindowsMacro.Instance.IsChatRoomOpen(bot.TargetWindow) == false)
+                        if (rebootTimer.Check(Time.DeltaTime) && bot.IsBotRunning)
                         {
-                            WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
-                            Thread.Sleep(1000);
-                            WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 코몽봇이 다시 시작되었습니다.");
-                            bot.Start();
+                            WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 원활한 사용을 위해 봇이 재기동됩니다.\n(1분 정도 소요됨.)");
+                            bot.Stop();
+                            WindowsMacro.Instance.CloseChatRoom(bot.TargetWindow);
                         }
                     }
-
-                    if (rebootTimer.Check(Time.DeltaTime) && bot.IsBotRunning)
-                    {
-                        WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, "[시스템] 원활한 사용을 위해 봇이 재기동됩니다.\n(1분 정도 소요됨.)");
-                        bot.Stop();
-                        WindowsMacro.Instance.CloseChatRoom(bot.TargetWindow);
-                    }
+                    
                     bot.Update();
                     voiceRoomBot.Update();
                     System.Threading.Thread.Sleep(0);

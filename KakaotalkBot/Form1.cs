@@ -99,6 +99,12 @@ namespace KakaotalkBot
                 pictureBox1.Image = voiceRoomBot.CurrentScreen;
             }
 
+            if (voiceRoomBot.CurrentScreen2 != null)
+            {
+                pictureBox2.Size = new Size(voiceRoomBot.CurrentScreen2.Width, voiceRoomBot.CurrentScreen2.Height);
+                pictureBox2.Image = voiceRoomBot.CurrentScreen2;
+            }
+
         }
 
         private void OnApplicationExit(object sender, EventArgs e)
@@ -288,6 +294,11 @@ namespace KakaotalkBot
         {
             voiceRoomBot.IsClickMacroRunning =
             checkBox1.Checked;
+        }
+
+        private void checkBox2_CheckedChanged(object sender, EventArgs e)
+        {
+            StaticVariable.AutoReboot = checkBox2.Checked;
         }
     }
 }

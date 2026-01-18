@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Windows.Forms;
 
 namespace KakaotalkBot
 {
@@ -13,13 +11,18 @@ namespace KakaotalkBot
         private bool isBotRunning = false;
         private CustomTimer autoClickTimer;
         private CustomTimer screenCaptureTimer = new CustomTimer(100);
+        private CustomTimer screenCaptureTimer2 = new CustomTimer(90);
         private CustomTimer autoPresenterTimer = new CustomTimer(10000);
+        private CustomTimer lineDetectorTimer = new CustomTimer(10000);
+        private CustomTimer acceptTimer = new CustomTimer(90);
 
-        private int modifiedY;
+        private int modifiedY = 414;
         private bool isLineFound = false;
         private Bitmap line;
         private Bitmap manager;
         private Bitmap manager2;
+        private Bitmap host;
+        private Bitmap accept;
 
         public int X { get; set; } = 0;
         public int Y { get; set; } = 0;
@@ -33,6 +36,7 @@ namespace KakaotalkBot
             }
         }
         public Bitmap CurrentScreen { get; private set; }
+        public Bitmap CurrentScreen2 { get; private set; }
 
 
         public VoiceRoomBot()
@@ -40,6 +44,8 @@ namespace KakaotalkBot
             line = new Bitmap("리스너경계선.bmp");
             manager = new Bitmap("방장.bmp");
             manager2 = new Bitmap("부방장.bmp");
+            host = new Bitmap("진행자.bmp");
+            accept = new Bitmap("수락.bmp");
         }
 
         public void Update()
@@ -55,15 +61,33 @@ namespace KakaotalkBot
                 }
             }
 
-            //if (screenCaptureTimer.Check(Time.DeltaTime))
-            //{
-            //    ProcessCaptureScreen();
-            //}
+            if (screenCaptureTimer.Check(Time.DeltaTime))
+            {
+                ProcessCaptureScreen();
+            }
 
-            //if(autoPresenterTimer.Check(Time.DeltaTime))
-            //{
-            //    ProcessAutoPresenter();
-            //}
+            if (screenCaptureTimer2.Check(Time.DeltaTime))
+            {
+                ProcessCaptureScreen2();
+            }
+
+            if (acceptTimer.Check(Time.DeltaTime))
+            {
+                ProcessAccept();
+            }
+
+            if (lineDetectorTimer.Check(Time.DeltaTime))
+            {
+                ProcessLineDetect();
+            }
+
+            if (autoPresenterTimer.Check(Time.DeltaTime))
+            {
+                ProcessAutoPresenter();
+            }
+
+            
+
         }
 
         public void Start(int x, int y, long delay)
@@ -87,12 +111,8 @@ namespace KakaotalkBot
             Point pos = WindowsMacro.Instance.GetWindowPos(handle);
             Point size = WindowsMacro.Instance.GetWindowSize(handle);
 
-            Rectangle captureArea = new Rectangle(pos.X, pos.Y, size.X, 414);
+            Rectangle captureArea = new Rectangle(pos.X, pos.Y, size.X, modifiedY);
 
-            if(isLineFound)
-            {
-                //captureArea = new Rectangle(pos.X, pos.Y, size.X, modifiedY);
-            }
 
             if (CurrentScreen != null)
             {
@@ -100,6 +120,57 @@ namespace KakaotalkBot
                 CurrentScreen = null;
             }
             CurrentScreen = CaptureScreen(captureArea);
+        }
+
+        private void ProcessCaptureScreen2()
+        {
+            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
+            if (handle == IntPtr.Zero) return;
+
+            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
+            Point size = WindowsMacro.Instance.GetWindowSize(handle);
+
+            int w = 260;
+            int h = 120;
+            int x = pos.X + (size.X - w) / 2;
+            int y = pos.Y + (size.Y - h) / 2;
+
+            Rectangle captureArea = new Rectangle(x, y, w, h);
+
+
+            if (CurrentScreen2 != null)
+            {
+                CurrentScreen2.Dispose();
+                CurrentScreen2 = null;
+            }
+            CurrentScreen2 = CaptureScreen(captureArea);
+        }
+
+        private void ProcessLineDetect()
+        {
+            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
+            if (handle == IntPtr.Zero) return;
+
+            if (isLineFound)
+            {
+
+            }
+            else
+            {
+                if (TryFindTemplate_Sampled(
+                     CurrentScreen, line, out var at2,
+                     tolerance: 15,
+                     searchStep: 1,
+                     gridSampleStep: 1,
+                     maxSamplePoints: 120))
+                {
+                    Point pos = WindowsMacro.Instance.GetWindowPos(handle);
+                    int x = at2.X + pos.X;
+                    int y = at2.Y + pos.Y;
+
+                    modifiedY = at2.Y + line.Height;
+                }
+            }
 
         }
 
@@ -120,37 +191,76 @@ namespace KakaotalkBot
                 int y = at.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x, y);
                 WindowsMacro.Instance.ClickRight();
-                Thread.Sleep(500);
-                WindowsMacro.Instance.SetCursor(x+20, y+20);
-                WindowsMacro.Instance.ClickLeft();
-            }
-            else
-            {
 
-            }
-
-            if (TryFindTemplate_Sampled(
-                      CurrentScreen, manager2, out var at2,
+                if (TryFindTemplate_Sampled(
+                      CurrentScreen, host, out var at3,
                       tolerance: 15,
                       searchStep: 1,
                       gridSampleStep: 1,
                       maxSamplePoints: 120))
+                {
+                    int x2 = at3.X + pos.X;
+                    int y2 = at3.Y + pos.Y;
+                    WindowsMacro.Instance.SetCursor(x2, y2);
+                    WindowsMacro.Instance.ClickLeft();
+                }
+
+            }
+
+            if (TryFindTemplate_Sampled(
+                     CurrentScreen, manager2, out var at2,
+                     tolerance: 15,
+                     searchStep: 1,
+                     gridSampleStep: 1,
+                     maxSamplePoints: 120))
             {
                 Point pos = WindowsMacro.Instance.GetWindowPos(handle);
                 int x = at2.X + pos.X;
                 int y = at2.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x, y);
                 WindowsMacro.Instance.ClickRight();
-                Thread.Sleep(500);
-                WindowsMacro.Instance.SetCursor(x + 20, y + 20);
-                WindowsMacro.Instance.ClickLeft();
-            }
-            else
-            {
 
+                if (TryFindTemplate_Sampled(
+                      CurrentScreen, host, out var at3,
+                      tolerance: 15,
+                      searchStep: 1,
+                      gridSampleStep: 1,
+                      maxSamplePoints: 120))
+                {
+                    int x2 = at3.X + pos.X;
+                    int y2 = at3.Y + pos.Y;
+                    WindowsMacro.Instance.SetCursor(x2, y2);
+                    WindowsMacro.Instance.ClickLeft();
+                }
             }
         }
 
+        private void ProcessAccept()
+        {
+            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
+            if (handle == IntPtr.Zero) return;
+
+            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
+            Point size = WindowsMacro.Instance.GetWindowSize(handle);
+
+            int w = 260;
+            int h = 120;
+            int x = pos.X + (size.X - w) / 2;
+            int y = pos.Y + (size.Y - h) / 2;
+
+            if (TryFindTemplate_Sampled(
+                    CurrentScreen2, accept, out var at,
+                    tolerance: 15,
+                    searchStep: 1,
+                    gridSampleStep: 1,
+                    maxSamplePoints: 120))
+            {
+                int x2 = x + at.X;
+                int y2 = y + at.Y;
+                WindowsMacro.Instance.SetCursor(x2, y2);
+                WindowsMacro.Instance.ClickLeft();
+            }
+        }
 
         private Bitmap CaptureScreen(Rectangle rect)
         {
