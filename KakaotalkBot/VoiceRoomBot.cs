@@ -84,6 +84,8 @@ namespace KakaotalkBot
             if (autoPresenterTimer.Check(Time.DeltaTime))
             {
                 ProcessAutoPresenter();
+
+                ProcessAutoPresenter2();
             }
 
             
@@ -191,20 +193,6 @@ namespace KakaotalkBot
                 int y = at.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x, y);
                 WindowsMacro.Instance.ClickRight();
-
-                if (TryFindTemplate_Sampled(
-                      CurrentScreen, host, out var at3,
-                      tolerance: 15,
-                      searchStep: 1,
-                      gridSampleStep: 1,
-                      maxSamplePoints: 120))
-                {
-                    int x2 = at3.X + pos.X;
-                    int y2 = at3.Y + pos.Y;
-                    WindowsMacro.Instance.SetCursor(x2, y2);
-                    WindowsMacro.Instance.ClickLeft();
-                }
-
             }
 
             if (TryFindTemplate_Sampled(
@@ -219,19 +207,26 @@ namespace KakaotalkBot
                 int y = at2.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x, y);
                 WindowsMacro.Instance.ClickRight();
+            }
+        }
 
-                if (TryFindTemplate_Sampled(
-                      CurrentScreen, host, out var at3,
-                      tolerance: 15,
-                      searchStep: 1,
-                      gridSampleStep: 1,
-                      maxSamplePoints: 120))
-                {
-                    int x2 = at3.X + pos.X;
-                    int y2 = at3.Y + pos.Y;
-                    WindowsMacro.Instance.SetCursor(x2, y2);
-                    WindowsMacro.Instance.ClickLeft();
-                }
+        private void ProcessAutoPresenter2()
+        {
+            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
+            if (handle == IntPtr.Zero) return;
+
+            if (TryFindTemplate_Sampled(
+                     CurrentScreen, host, out var at3,
+                     tolerance: 15,
+                     searchStep: 1,
+                     gridSampleStep: 1,
+                     maxSamplePoints: 120))
+            {
+                Point pos = WindowsMacro.Instance.GetWindowPos(handle);
+                int x2 = at3.X + pos.X;
+                int y2 = at3.Y + pos.Y;
+                WindowsMacro.Instance.SetCursor(x2, y2);
+                WindowsMacro.Instance.ClickLeft();
             }
         }
 
