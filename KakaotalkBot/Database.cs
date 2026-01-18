@@ -266,7 +266,7 @@ namespace KakaotalkBot
             Quiz cs = commonSenses[currentAnswerIndex];
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("[⁉️상식퀴즈⁉️]");
-            sb.AppendLine("$📜{cs.Question}");
+            sb.AppendLine($"📜{cs.Question}");
             sb.AppendLine($"♻️분류: {cs.Category}");
             sb.AppendLine($"🎢난이도: {cs.Difficulty}");
             sb.Append($"💡힌트: {cs.Hint}");
