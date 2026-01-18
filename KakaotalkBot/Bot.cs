@@ -690,11 +690,11 @@ namespace KakaotalkBot
                         }
 
                         a.Point += point;
-                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"정답자: {quizAnswer.Nickname}\n정답: {quiz.Answer}\n해설: {quiz.Explanation}\n+{point} 포인트 득점!!👍\n 현재 포인트: {a.Point}");
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"💡정답자: {quizAnswer.Nickname}\n💬정답: {quiz.Answer}\n📜해설: {quiz.Explanation}\n+{point} 포인트 득점!!👍\n 현재 포인트: {a.Point}");
                     }
                     else
                     {
-                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"정답: {quiz.Answer}\n해설: {quiz.Explanation}");
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"💡정답자: {quizAnswer.Nickname}\n💬정답: {quiz.Answer}\n📜해설: {quiz.Explanation}");
                     }
 
                     Database.Instance.CurrentAnswerIndex = -1;
