@@ -155,25 +155,22 @@ namespace KakaotalkBot
             IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
             if (handle == IntPtr.Zero) return;
 
-            if (isLineFound)
+            if (TryFindTemplate_Sampled(
+                    CurrentScreen, line, out var at2,
+                    tolerance: 15,
+                    searchStep: 1,
+                    gridSampleStep: 1,
+                    maxSamplePoints: 120))
             {
+                Point pos = WindowsMacro.Instance.GetWindowPos(handle);
+                int x = at2.X + pos.X;
+                int y = at2.Y + pos.Y;
 
+                modifiedY = at2.Y + line.Height;
             }
             else
             {
-                if (TryFindTemplate_Sampled(
-                     CurrentScreen, line, out var at2,
-                     tolerance: 15,
-                     searchStep: 1,
-                     gridSampleStep: 1,
-                     maxSamplePoints: 120))
-                {
-                    Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-                    int x = at2.X + pos.X;
-                    int y = at2.Y + pos.Y;
-
-                    modifiedY = at2.Y + line.Height;
-                }
+                modifiedY = 414;
             }
 
         }
