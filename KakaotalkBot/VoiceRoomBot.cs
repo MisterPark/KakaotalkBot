@@ -13,6 +13,7 @@ namespace KakaotalkBot
         private CustomTimer screenCaptureTimer = new CustomTimer(100);
         private CustomTimer screenCaptureTimer2 = new CustomTimer(90);
         private CustomTimer autoPresenterTimer = new CustomTimer(10000);
+        private CustomTimer autoPresenterTimer2 = new CustomTimer(1000);
         private CustomTimer lineDetectorTimer = new CustomTimer(10000);
         private CustomTimer acceptTimer = new CustomTimer(90);
 
@@ -84,11 +85,12 @@ namespace KakaotalkBot
             if (autoPresenterTimer.Check(Time.DeltaTime))
             {
                 ProcessAutoPresenter();
-
-                ProcessAutoPresenter2();
             }
 
-            
+            if (autoPresenterTimer2.Check(Time.DeltaTime))
+            {
+                ProcessAutoPresenter2();
+            }
 
         }
 
