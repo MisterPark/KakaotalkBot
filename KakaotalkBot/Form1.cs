@@ -109,7 +109,7 @@ namespace KakaotalkBot
 
         private void OnApplicationExit(object sender, EventArgs e)
         {
-
+            Program.ShutdownFlag = true;
         }
 
 

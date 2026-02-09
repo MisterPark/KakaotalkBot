@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace KakaotalkBot
@@ -9,6 +11,7 @@ namespace KakaotalkBot
     {
         public static bool isThreadRunning = false;
         public static bool isBotRunning = false;
+        public static bool ShutdownFlag = false;
 
         [STAThread]
         static void Main()
@@ -24,12 +27,30 @@ namespace KakaotalkBot
 
             VoiceRoomBot voiceRoomBot = new VoiceRoomBot();
 
+
+            DateTime utc = GetUtc();
+
+
+            var kstZone = TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time");
+            DateTime kst = TimeZoneInfo.ConvertTimeFromUtc(utc, kstZone);
+
+            //MessageBox.Show("KST : " + kst.ToString("yyyy-MM-dd HH:mm:ss"));
+
+            DateTime limit = new DateTime(2026, 2, 28, 0, 0, 0, 0, DateTimeKind.Local);
+            var t = limit - kst;
+
+            if(t.TotalDays < 0)
+            {
+                MessageBox.Show("사용 가능 기간 초과");
+                return;
+            }
+
+
             Form1 form = new Form1(bot, voiceRoomBot);
             form.Show();
 
-
             NativeMessage msg;
-            while (true)
+            while (!ShutdownFlag)
             {
                 if (PeekMessage(out msg, IntPtr.Zero, 0, 0, 1))
                 {
@@ -100,7 +121,24 @@ namespace KakaotalkBot
         [DllImport("user32.dll")]
         public static extern IntPtr DispatchMessage([In] ref NativeMessage message);
 
+        private static readonly HttpClient _http = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(3)
+        };
+        public static DateTime GetUtc()
+        {
+            using (var req = new HttpRequestMessage(HttpMethod.Head, "https://www.naver.com"))
+            using (var resp = _http
+                .SendAsync(req, HttpCompletionOption.ResponseHeadersRead)
+                .GetAwaiter()
+                .GetResult())
+            {
+                if (!resp.Headers.Date.HasValue)
+                    throw new Exception("Naver Date header not found.");
 
-
+                // Date 헤더는 UTC
+                return resp.Headers.Date.Value.UtcDateTime;
+            }
+        }
     }
 }
