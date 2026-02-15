@@ -139,7 +139,7 @@ namespace KakaotalkBot
             int x = pos.X + (size.X - w) / 2;
             int y = pos.Y + (size.Y - h) / 2;
 
-            Rectangle captureArea = new Rectangle(x, y, w, h);
+            Rectangle captureArea = new Rectangle(x, y, 130, h);
 
 
             if (CurrentScreen2 != null)

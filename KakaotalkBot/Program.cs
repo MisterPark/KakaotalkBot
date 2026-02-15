@@ -39,11 +39,11 @@ namespace KakaotalkBot
             DateTime limit = new DateTime(2026, 2, 28, 0, 0, 0, 0, DateTimeKind.Local);
             var t = limit - kst;
 
-            if(t.TotalDays < 0)
-            {
-                MessageBox.Show("사용 가능 기간 초과");
-                return;
-            }
+            //if(t.TotalDays < 0)
+            //{
+            //    MessageBox.Show("사용 가능 기간 초과");
+            //    return;
+            //}
 
 
             Form1 form = new Form1(bot, voiceRoomBot);
