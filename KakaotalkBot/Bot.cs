@@ -601,6 +601,7 @@ namespace KakaotalkBot
 
                 //WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"다음 퀴즈를 준비하고 있습니다.\n남은 시간: {left}초");
                 Database.Instance.SetNextCommonSense();
+                answer = Database.Instance.GetCommonSenseText();
                 WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"{answer}");
             }
             else
