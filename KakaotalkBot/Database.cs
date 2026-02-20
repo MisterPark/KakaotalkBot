@@ -259,7 +259,7 @@ namespace KakaotalkBot
 
         public void ResetCommonSense()
         {
-            currentAnswerIndex = 0;
+            currentAnswerIndex = -1;
         }
 
         public string GetCommonSenseText()
