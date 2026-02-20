@@ -257,6 +257,11 @@ namespace KakaotalkBot
             currentAnswerIndex = randomValue % commonSenses.Count;
         }
 
+        public void ResetCommonSense()
+        {
+            currentAnswerIndex = 0;
+        }
+
         public string GetCommonSenseText()
         {
             if(currentAnswerIndex < 0 )

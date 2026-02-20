@@ -597,9 +597,11 @@ namespace KakaotalkBot
             string answer = Database.Instance.GetCommonSenseText();
             if (string.IsNullOrEmpty(answer))
             {
-                double left = soliloquyTimer.TimeLeft * 0.001;
+                //double left = soliloquyTimer.TimeLeft * 0.001;
 
-                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"다음 퀴즈를 준비하고 있습니다.\n남은 시간: {left}초");
+                //WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"다음 퀴즈를 준비하고 있습니다.\n남은 시간: {left}초");
+                Database.Instance.SetNextCommonSense();
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"{answer}");
             }
             else
             {
@@ -627,8 +629,9 @@ namespace KakaotalkBot
                 }
             }
 
-            Database.Instance.SetNextCommonSense();
-            ProcessCommonSense();
+            Database.Instance.ResetCommonSense();
+            //Database.Instance.SetNextCommonSense();
+            //ProcessCommonSense();
         }
 
         private void ProcessNews()
