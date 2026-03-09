@@ -603,6 +603,7 @@ namespace KakaotalkBot
                 Database.Instance.SetNextCommonSense();
                 answer = Database.Instance.GetCommonSenseText();
                 WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"{answer}");
+                soliloquyTimer.Reset();
             }
             else
             {
