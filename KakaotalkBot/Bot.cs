@@ -282,7 +282,7 @@ namespace KakaotalkBot
             //    SendTextToChatroom(TargetWindow, $"{answer}");
             //}
 
-            if (command.Keyword == "/?" || command.Keyword == "/명령어" || command.Keyword == "/훈장" || command.Keyword == "/공지사항" || command.Keyword == "/패치노트")
+            if (command.Keyword == "/?" || command.Keyword == "/명령어" || command.Keyword == "/훈장" || command.Keyword == "/공지사항" || command.Keyword == "/패치노트" || command.Keyword == "/서브방")
             {
                 string answer = Database.Instance.GetAnswer(command.Keyword);
 
