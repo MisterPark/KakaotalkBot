@@ -86,6 +86,15 @@ namespace KakaotalkBot
                 button2.BackColor = Color.Red;
             }
 
+            if (voiceRoomBot.IsBotRunning)
+            {
+                button1.BackColor = Color.Green;
+            }
+            else
+            {
+                button1.BackColor = Color.Red;
+            }
+
             label3.Text = lastBotResetTime.ToString("HH:mm:ss");
             label4.Text = DateTime.Now.ToString("HH:mm:ss");
 
@@ -103,6 +112,12 @@ namespace KakaotalkBot
             {
                 pictureBox2.Size = new Size(voiceRoomBot.CurrentScreen2.Width, voiceRoomBot.CurrentScreen2.Height);
                 pictureBox2.Image = voiceRoomBot.CurrentScreen2;
+            }
+
+            if (voiceRoomBot.CurrentScreen3 != null)
+            {
+                pictureBox3.Size = new Size(voiceRoomBot.CurrentScreen3.Width, voiceRoomBot.CurrentScreen3.Height);
+                pictureBox3.Image = voiceRoomBot.CurrentScreen3;
             }
 
         }
@@ -209,6 +224,7 @@ namespace KakaotalkBot
             string roomName = listView1.SelectedItems[0].SubItems[0].Text;
             textBox1.Text = roomName;
             bot.TargetWindow = roomName;
+            voiceRoomBot.TargetWindow = roomName;
         }
 
         private void button3_Click(object sender, EventArgs e)
@@ -217,19 +233,6 @@ namespace KakaotalkBot
             UpdateWindowList();
         }
 
-        private void button5_Click(object sender, EventArgs e)
-        {
-            if (openFileDialog1.ShowDialog() == DialogResult.OK)
-            {
-                string fullPath = openFileDialog1.FileName;
-                textBox4.Text = fullPath;
-                string path = Path.GetDirectoryName(fullPath);
-                string fileName = Path.GetFileNameWithoutExtension(fullPath) + "_decrypted.db";
-
-
-                textBox5.Text = Path.Combine(path, fileName);
-            }
-        }
 
         private void button6_Click(object sender, EventArgs e)
         {

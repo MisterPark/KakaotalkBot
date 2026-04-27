@@ -317,6 +317,35 @@ namespace KakaotalkBot
             return handle;
         }
 
+        public IntPtr FindTargetWindow(string target)
+        {
+            if (string.IsNullOrEmpty(target)) return IntPtr.Zero;
+
+            IntPtr handle = IntPtr.Zero;
+            StringBuilder sb = new StringBuilder();
+
+            EnumWindows((hWnd, lParam) =>
+            {
+                if (IsWindowVisible(hWnd))
+                {
+                    int length = GetWindowTextLength(hWnd);
+                    if (length > 0)
+                    {
+                        StringBuilder builder = new StringBuilder(length + 1);
+                        GetWindowText(hWnd, builder, builder.Capacity);
+                        string title = builder.ToString();
+                        if (title.StartsWith(target))
+                        {
+                            handle = hWnd;
+                        }
+                    }
+                }
+                return true; // 계속 열거
+            }, IntPtr.Zero);
+
+            return handle;
+        }
+
         public bool IsKakaoTalkOpen()
         {
             IntPtr hwndKakao = FindWindow(null, "카카오톡");

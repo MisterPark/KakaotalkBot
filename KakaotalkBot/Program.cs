@@ -26,6 +26,7 @@ namespace KakaotalkBot
             CustomTimer rebootTimer = new CustomTimer(14400000);
 
             VoiceRoomBot voiceRoomBot = new VoiceRoomBot();
+            voiceRoomBot.TargetWindow = "흑우방";
 
 
             DateTime utc = GetUtc();

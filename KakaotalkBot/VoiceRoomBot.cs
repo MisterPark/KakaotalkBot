@@ -12,10 +12,13 @@ namespace KakaotalkBot
         private CustomTimer autoClickTimer;
         private CustomTimer screenCaptureTimer = new CustomTimer(100);
         private CustomTimer screenCaptureTimer2 = new CustomTimer(90);
+        private CustomTimer screenCaptureTimer3 = new CustomTimer(1000);
         private CustomTimer autoPresenterTimer = new CustomTimer(10000);
         private CustomTimer autoPresenterTimer2 = new CustomTimer(1000);
         private CustomTimer lineDetectorTimer = new CustomTimer(10000);
         private CustomTimer acceptTimer = new CustomTimer(90);
+        private CustomTimer joinTimer = new CustomTimer(3000);
+        private CustomTimer voiceRoomExitTimer = new CustomTimer(3000);
 
         private int modifiedY = 414;
         private bool isLineFound = false;
@@ -24,6 +27,9 @@ namespace KakaotalkBot
         private Bitmap manager2;
         private Bitmap host;
         private Bitmap accept;
+        private Bitmap accept2;
+        private Bitmap join;
+        private Bitmap voiceRoomExit;
 
         public int X { get; set; } = 0;
         public int Y { get; set; } = 0;
@@ -38,6 +44,8 @@ namespace KakaotalkBot
         }
         public Bitmap CurrentScreen { get; private set; }
         public Bitmap CurrentScreen2 { get; private set; }
+        public Bitmap CurrentScreen3 { get; private set; }
+        public string TargetWindow { get; set; } = string.Empty;
 
 
         public VoiceRoomBot()
@@ -47,6 +55,9 @@ namespace KakaotalkBot
             manager2 = new Bitmap("부방장.bmp");
             host = new Bitmap("진행자.bmp");
             accept = new Bitmap("수락.bmp");
+            accept2 = new Bitmap("수락2.bmp");
+            join = new Bitmap("참여.bmp");
+            voiceRoomExit = new Bitmap("보룸닫기.bmp");
         }
 
         public void Update()
@@ -72,9 +83,24 @@ namespace KakaotalkBot
                 ProcessCaptureScreen2();
             }
 
+            if (screenCaptureTimer3.Check(Time.DeltaTime))
+            {
+                ProcessCaptureScreen3();
+            }
+
             if (acceptTimer.Check(Time.DeltaTime))
             {
                 ProcessAccept();
+            }
+
+            if (joinTimer.Check(Time.DeltaTime))
+            {
+                ProcessJoin();
+            }
+
+            if (voiceRoomExitTimer.Check(Time.DeltaTime))
+            {
+                ProcessVoiceRoomExit();
             }
 
             if (lineDetectorTimer.Check(Time.DeltaTime))
@@ -148,6 +174,30 @@ namespace KakaotalkBot
                 CurrentScreen2 = null;
             }
             CurrentScreen2 = CaptureScreen(captureArea);
+        }
+
+        private void ProcessCaptureScreen3()
+        {
+            IntPtr handle = WindowsMacro.Instance.FindTargetWindow(TargetWindow);
+            if (handle == IntPtr.Zero) return;
+
+            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
+            Point size = WindowsMacro.Instance.GetWindowSize(handle);
+
+            int w = size.X;
+            int h = 150;
+            int x = pos.X;
+            int y = pos.Y;
+
+            Rectangle captureArea = new Rectangle(x, y, w, h);
+
+
+            if (CurrentScreen3 != null)
+            {
+                CurrentScreen3.Dispose();
+                CurrentScreen3 = null;
+            }
+            CurrentScreen3 = CaptureScreen(captureArea);
         }
 
         private void ProcessLineDetect()
@@ -244,6 +294,75 @@ namespace KakaotalkBot
 
             if (TryFindTemplate_Sampled(
                     CurrentScreen2, accept, out var at,
+                    tolerance: 15,
+                    searchStep: 1,
+                    gridSampleStep: 1,
+                    maxSamplePoints: 120))
+            {
+                int x2 = x + at.X;
+                int y2 = y + at.Y;
+                WindowsMacro.Instance.SetCursor(x2, y2);
+                WindowsMacro.Instance.ClickLeft();
+            }
+
+            if (TryFindTemplate_Sampled(
+                    CurrentScreen2, accept2, out var at2,
+                    tolerance: 15,
+                    searchStep: 1,
+                    gridSampleStep: 1,
+                    maxSamplePoints: 120))
+            {
+                int x2 = x + at2.X;
+                int y2 = y + at2.Y;
+                WindowsMacro.Instance.SetCursor(x2, y2);
+                WindowsMacro.Instance.ClickLeft();
+            }
+        }
+
+        private void ProcessJoin()
+        {
+            if (CurrentScreen3 == null) return;
+
+            IntPtr handle = WindowsMacro.Instance.FindTargetWindow(TargetWindow);
+            if (handle == IntPtr.Zero) return;
+
+            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
+            Point size = WindowsMacro.Instance.GetWindowSize(handle);
+
+            int w = size.X;
+            int h = 150;
+            int x = pos.X;
+            int y = pos.Y;
+
+            if (TryFindTemplate_Sampled(
+                    CurrentScreen3, join, out var at,
+                    tolerance: 15,
+                    searchStep: 1,
+                    gridSampleStep: 1,
+                    maxSamplePoints: 120))
+            {
+                int x2 = x + at.X + join.Width / 2;
+                int y2 = y + at.Y + join.Height / 2;
+                WindowsMacro.Instance.SetCursor(x2, y2);
+                WindowsMacro.Instance.ClickLeft();
+            }
+        }
+
+        private void ProcessVoiceRoomExit()
+        {
+            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
+            if (handle == IntPtr.Zero) return;
+
+            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
+            Point size = WindowsMacro.Instance.GetWindowSize(handle);
+
+            int w = 260;
+            int h = 120;
+            int x = pos.X + (size.X - w) / 2;
+            int y = pos.Y + (size.Y - h) / 2;
+
+            if (TryFindTemplate_Sampled(
+                    CurrentScreen2, voiceRoomExit, out var at,
                     tolerance: 15,
                     searchStep: 1,
                     gridSampleStep: 1,
