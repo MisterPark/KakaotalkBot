@@ -358,7 +358,7 @@ namespace KakaotalkBot
             List<WindowInfo> list = GetWindowList();
             foreach (WindowInfo windowInfo in list)
             {
-                if(windowInfo.Title == roomName)
+                if (windowInfo.Title == roomName)
                 {
                     return true;
                 }
@@ -591,6 +591,11 @@ namespace KakaotalkBot
             }
 
             return result;
+        }
+
+        public void SetForeground(IntPtr hwnd)
+        {
+            SetForegroundWindow(hwnd);
         }
     }
 }

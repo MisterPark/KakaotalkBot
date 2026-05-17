@@ -64,6 +64,7 @@ namespace KakaotalkBot
         {
             if (IsBotRunning == false) return;
 
+
             if (autoClickTimer.Check(Time.DeltaTime))
             {
                 if (IsClickMacroRunning)
@@ -138,6 +139,7 @@ namespace KakaotalkBot
             IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
             if (handle == IntPtr.Zero) return;
 
+
             Point pos = WindowsMacro.Instance.GetWindowPos(handle);
             Point size = WindowsMacro.Instance.GetWindowSize(handle);
 
@@ -156,6 +158,7 @@ namespace KakaotalkBot
         {
             IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
             if (handle == IntPtr.Zero) return;
+
 
             Point pos = WindowsMacro.Instance.GetWindowPos(handle);
             Point size = WindowsMacro.Instance.GetWindowSize(handle);
@@ -181,6 +184,7 @@ namespace KakaotalkBot
             IntPtr handle = WindowsMacro.Instance.FindTargetWindow(TargetWindow);
             if (handle == IntPtr.Zero) return;
 
+
             Point pos = WindowsMacro.Instance.GetWindowPos(handle);
             Point size = WindowsMacro.Instance.GetWindowSize(handle);
 
@@ -204,6 +208,7 @@ namespace KakaotalkBot
         {
             IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
             if (handle == IntPtr.Zero) return;
+
 
             if (TryFindTemplate_Sampled(
                     CurrentScreen, line, out var at2,
@@ -229,6 +234,7 @@ namespace KakaotalkBot
         {
             IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
             if (handle == IntPtr.Zero) return;
+
 
             if (TryFindTemplate_Sampled(
                        CurrentScreen, manager, out var at,
@@ -264,6 +270,7 @@ namespace KakaotalkBot
             IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
             if (handle == IntPtr.Zero) return;
 
+
             if (TryFindTemplate_Sampled(
                      CurrentScreen, host, out var at3,
                      tolerance: 15,
@@ -283,6 +290,7 @@ namespace KakaotalkBot
         {
             IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
             if (handle == IntPtr.Zero) return;
+
 
             Point pos = WindowsMacro.Instance.GetWindowPos(handle);
             Point size = WindowsMacro.Instance.GetWindowSize(handle);
@@ -326,6 +334,7 @@ namespace KakaotalkBot
             IntPtr handle = WindowsMacro.Instance.FindTargetWindow(TargetWindow);
             if (handle == IntPtr.Zero) return;
 
+
             Point pos = WindowsMacro.Instance.GetWindowPos(handle);
             Point size = WindowsMacro.Instance.GetWindowSize(handle);
 
@@ -352,6 +361,7 @@ namespace KakaotalkBot
         {
             IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
             if (handle == IntPtr.Zero) return;
+
 
             Point pos = WindowsMacro.Instance.GetWindowPos(handle);
             Point size = WindowsMacro.Instance.GetWindowSize(handle);

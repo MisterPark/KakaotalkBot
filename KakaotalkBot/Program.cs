@@ -22,11 +22,13 @@ namespace KakaotalkBot
             Application.SetCompatibleTextRenderingDefault(false);
 
             Bot bot = new Bot();
-            bot.TargetWindow = "흑우방";
+            bot.TargetWindow = "";
+            bot.IsBotRunning = false;
+            bot.VoiceRoomBot.IsBotRunning = false;
             CustomTimer rebootTimer = new CustomTimer(14400000);
 
-            VoiceRoomBot voiceRoomBot = new VoiceRoomBot();
-            voiceRoomBot.TargetWindow = "흑우방";
+            //VoiceRoomBot voiceRoomBot = new VoiceRoomBot();
+            //voiceRoomBot.TargetWindow = "흑우방";
 
 
             DateTime utc = GetUtc();
@@ -47,7 +49,7 @@ namespace KakaotalkBot
             //}
 
 
-            Form1 form = new Form1(bot, voiceRoomBot);
+            Form1 form = new Form1(bot, bot.VoiceRoomBot);
             form.Show();
 
             NativeMessage msg;
@@ -95,7 +97,7 @@ namespace KakaotalkBot
                     }
                     
                     bot.Update();
-                    voiceRoomBot.Update();
+                    //voiceRoomBot.Update();
                     System.Threading.Thread.Sleep(0);
                 }
             }

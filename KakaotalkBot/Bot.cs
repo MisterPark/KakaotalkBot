@@ -19,7 +19,19 @@ namespace KakaotalkBot
         }
 
 
-        public string TargetWindow { get; set; } = string.Empty;
+        private string targetWindow = string.Empty;
+        public string TargetWindow
+        {
+            get
+            {
+                return targetWindow; 
+            }
+            set 
+            {
+                targetWindow = value; 
+                voiceRoomBot.TargetWindow = value;
+            }
+        }
 
         private Dictionary<string, WindowInfo> windowList = new Dictionary<string, WindowInfo>();
 
@@ -59,10 +71,15 @@ namespace KakaotalkBot
         private Dictionary<string, string> passwordChangeList = new Dictionary<string, string>();
         private Dictionary<string, string> passwordChangeList2 = new Dictionary<string, string>();
 
+        private VoiceRoomBot voiceRoomBot;
+        public VoiceRoomBot VoiceRoomBot { get { return voiceRoomBot; } }
+
         public Bot()
         {
             UpdateWindowList();
             random = new Random(DateTime.Now.Millisecond);
+
+            voiceRoomBot = new VoiceRoomBot();
         }
 
         public void Update()
@@ -91,6 +108,8 @@ namespace KakaotalkBot
 
             ProcessQuiz();
             ProcessDirectMessage();
+
+            voiceRoomBot.Update();
         }
 
         public void UpdateWindowList()
