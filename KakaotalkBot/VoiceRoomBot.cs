@@ -247,8 +247,8 @@ namespace KakaotalkBot
                 int x = at.X + pos.X;
                 int y = at.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x, y);
-                WindowsMacro.Instance.ClickLeft();
                 WindowsMacro.Instance.ClickRight();
+                ProcessCaptureScreen();
             }
 
             if (TryFindTemplate_Sampled(
@@ -262,8 +262,8 @@ namespace KakaotalkBot
                 int x = at2.X + pos.X;
                 int y = at2.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x, y);
-                WindowsMacro.Instance.ClickLeft();
                 WindowsMacro.Instance.ClickRight();
+                ProcessCaptureScreen();
             }
         }
 
