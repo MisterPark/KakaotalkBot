@@ -112,11 +112,12 @@ namespace KakaotalkBot
             if (autoPresenterTimer.Check(Time.DeltaTime))
             {
                 ProcessAutoPresenter();
+                ProcessAutoPresenter2();
             }
 
             if (autoPresenterTimer2.Check(Time.DeltaTime))
             {
-                ProcessAutoPresenter2();
+                
             }
 
         }

@@ -86,6 +86,13 @@ namespace KakaotalkBot
         {
             if (IsBotRunning == false) return;
 
+            UpdateInternally();
+
+            voiceRoomBot.Update();
+        }
+
+        private void UpdateInternally()
+        {
             ProcessCopyChat();
             ProcessReset();
 
@@ -108,8 +115,6 @@ namespace KakaotalkBot
 
             ProcessQuiz();
             ProcessDirectMessage();
-
-            voiceRoomBot.Update();
         }
 
         public void UpdateWindowList()
