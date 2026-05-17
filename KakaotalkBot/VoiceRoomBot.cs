@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace KakaotalkBot
 {
@@ -249,6 +250,7 @@ namespace KakaotalkBot
                 int y = at.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x, y);
                 WindowsMacro.Instance.ClickRight();
+                Thread.Sleep(100);
                 ProcessCaptureScreen();
             }
 
@@ -264,6 +266,7 @@ namespace KakaotalkBot
                 int y = at2.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x, y);
                 WindowsMacro.Instance.ClickRight();
+                Thread.Sleep(100);
                 ProcessCaptureScreen();
             }
         }
