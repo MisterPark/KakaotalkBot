@@ -282,7 +282,7 @@ namespace KakaotalkBot
                 int x2 = at3.X + pos.X;
                 int y2 = at3.Y + pos.Y;
                 WindowsMacro.Instance.SetCursor(x2, y2);
-                WindowsMacro.Instance.ClickRight();
+                WindowsMacro.Instance.ClickLeft();
             }
         }
 
