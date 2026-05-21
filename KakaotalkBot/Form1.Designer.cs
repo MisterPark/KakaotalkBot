@@ -96,7 +96,7 @@
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
-            this.tabControl1.Size = new System.Drawing.Size(826, 653);
+            this.tabControl1.Size = new System.Drawing.Size(826, 727);
             this.tabControl1.TabIndex = 1;
             // 
             // tabPage1
@@ -115,7 +115,7 @@
             this.tabPage1.Location = new System.Drawing.Point(4, 22);
             this.tabPage1.Name = "tabPage1";
             this.tabPage1.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage1.Size = new System.Drawing.Size(818, 627);
+            this.tabPage1.Size = new System.Drawing.Size(818, 701);
             this.tabPage1.TabIndex = 0;
             this.tabPage1.Text = "보이스룸";
             this.tabPage1.UseVisualStyleBackColor = true;
@@ -164,7 +164,7 @@
             // 
             this.pictureBox1.Location = new System.Drawing.Point(16, 131);
             this.pictureBox1.Name = "pictureBox1";
-            this.pictureBox1.Size = new System.Drawing.Size(327, 478);
+            this.pictureBox1.Size = new System.Drawing.Size(327, 560);
             this.pictureBox1.TabIndex = 11;
             this.pictureBox1.TabStop = false;
             // 
@@ -449,7 +449,7 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(826, 653);
+            this.ClientSize = new System.Drawing.Size(826, 727);
             this.Controls.Add(this.tabControl1);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Name = "Form1";
