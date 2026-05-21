@@ -227,7 +227,7 @@ namespace KakaotalkBot
             }
             else
             {
-                modifiedY = 414;
+                modifiedY = 560;
             }
 
         }
