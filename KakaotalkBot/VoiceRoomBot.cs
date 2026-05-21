@@ -21,7 +21,7 @@ namespace KakaotalkBot
         private CustomTimer joinTimer = new CustomTimer(3000);
         private CustomTimer voiceRoomExitTimer = new CustomTimer(3000);
 
-        private int modifiedY = 414;
+        private int modifiedY = 560;
         private bool isLineFound = false;
         private Bitmap line;
         private Bitmap manager;
@@ -253,8 +253,7 @@ namespace KakaotalkBot
                 Thread.Sleep(100);
                 ProcessCaptureScreen();
             }
-
-            if (TryFindTemplate_Sampled(
+            else if (TryFindTemplate_Sampled(
                      CurrentScreen, manager2, out var at2,
                      tolerance: 15,
                      searchStep: 1,
