@@ -315,7 +315,19 @@ namespace KakaotalkBot
                     WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"{answer}");
                 }
             }
-            else if (command.Keyword == "/입장" || command.Keyword == "/퇴장")
+            else if (command.Keyword == "/입장")
+            {
+                string answer = Database.Instance.GetAnswer(command.Keyword);
+
+                if (string.IsNullOrEmpty(answer) == false)
+                {
+                    SmartString.CurrentNickname = command.Nickname;
+                    string parsedAnswer = SmartString.Parse(answer);
+                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"@{command.Nickname}");
+                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, parsedAnswer);
+                }
+            }
+            else if (command.Keyword == "/퇴장")
             {
                 string answer = Database.Instance.GetAnswer(command.Keyword);
 
