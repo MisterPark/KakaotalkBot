@@ -323,8 +323,8 @@ namespace KakaotalkBot
                 {
                     SmartString.CurrentNickname = command.Nickname;
                     string parsedAnswer = SmartString.Parse(answer);
-                    WindowsMacro.Instance.SetTextToChatroom(TargetWindow, $"@{command.Nickname}");
-                    //WindowsMacro.Instance.SendTextToChatroom(TargetWindow, parsedAnswer);
+                    //WindowsMacro.Instance.SetTextToChatroom(TargetWindow, $"@{command.Nickname}");
+                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, parsedAnswer);
                 }
             }
             else if (command.Keyword == "/퇴장")
