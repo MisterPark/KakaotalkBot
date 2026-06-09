@@ -536,7 +536,7 @@ namespace KakaotalkBot
                 Thread.Sleep(100);
                 SendCtrlKey(hwndEdit, 'v');
 
-                Press(VK_RETURN);
+                //Press(VK_RETURN);
                 Thread.Sleep(300);
             }
             catch (Exception e)
