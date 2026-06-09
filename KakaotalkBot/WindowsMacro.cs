@@ -521,6 +521,30 @@ namespace KakaotalkBot
 
         }
 
+        public void SetTextToChatroom(string chatroomName, string message)
+        {
+            //soliloquyTimer.Reset();
+
+            IntPtr hwndMain = FindWindow(null, chatroomName);
+            IntPtr hwndEdit = FindWindowEx(hwndMain, IntPtr.Zero, "RichEdit50W", null);
+
+            try
+            {
+                Clipboard.SetText(message);
+
+                SetForegroundWindow(hwndMain);
+                Thread.Sleep(100);
+                SendCtrlKey(hwndEdit, 'v');
+
+                Press(VK_RETURN);
+                Thread.Sleep(300);
+            }
+            catch (Exception e)
+            {
+            }
+
+        }
+
         public Point GetWindowPos(IntPtr hwnd)
         {
             RECT r;

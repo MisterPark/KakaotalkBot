@@ -323,7 +323,7 @@ namespace KakaotalkBot
                 {
                     SmartString.CurrentNickname = command.Nickname;
                     string parsedAnswer = SmartString.Parse(answer);
-                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"@{command.Nickname}");
+                    WindowsMacro.Instance.SetTextToChatroom(TargetWindow, $"@{command.Nickname}");
                     WindowsMacro.Instance.SendTextToChatroom(TargetWindow, parsedAnswer);
                 }
             }
