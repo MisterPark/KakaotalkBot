@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Windows.Automation;
 using System.Windows.Forms;
 
 namespace KakaotalkBot
@@ -159,7 +160,7 @@ namespace KakaotalkBot
             mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, UIntPtr.Zero);
             mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, UIntPtr.Zero);
         }
-        public void SendReturn(IntPtr hwnd)
+        public void SendReturn()
         {
             SendKeys.SendWait("~"); // ^ == Ctrl
         }
@@ -512,7 +513,7 @@ namespace KakaotalkBot
                 Thread.Sleep(100);
                 SendCtrlKey(hwndEdit, 'v');
 
-                SendReturn(hwndEdit);
+                SendReturn();
                 Thread.Sleep(300);
             }
             catch (Exception e)
@@ -536,7 +537,54 @@ namespace KakaotalkBot
                 Thread.Sleep(100);
                 SendCtrlKey(hwndEdit, 'v');
 
-                SendKeys.SendWait(" ");
+                Thread.Sleep(100);
+
+
+                AutomationElement main = AutomationElement.FromHandle(hwndMain);
+                if (main == null)
+                {
+                    return;
+                }
+
+                AutomationElement evaWindow = main.FindFirst(
+                    TreeScope.Descendants,
+                    new PropertyCondition(
+                        AutomationElement.ClassNameProperty,
+                        "EVA_Window_Dblclk"
+                    )
+                );
+
+                if (evaWindow == null)
+                {
+                    return;
+                }
+
+                AutomationElement evaChild = evaWindow.FindFirst(
+                    TreeScope.Descendants,
+                    new PropertyCondition(
+                        AutomationElement.ClassNameProperty,
+                        "EVA_ChildWindow_Dblclk"
+                    )
+                );
+
+                if (evaChild == null)
+                {
+                    return;
+                }
+
+
+                System.Windows.Rect rect = evaChild.Current.BoundingRectangle;
+
+                int x = (int)rect.Left + 5;
+                int y = (int)rect.Top + 5;
+
+                SetCursorPos(x, y);
+                ClickLeft();
+                Thread.Sleep(50);
+                ClickLeft();
+
+                SendReturn();
+
                 Thread.Sleep(300);
             }
             catch (Exception e)
