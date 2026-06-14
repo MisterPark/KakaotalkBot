@@ -31,6 +31,7 @@ namespace KakaotalkBot
         private Bitmap accept2;
         private Bitmap join;
         private Bitmap voiceRoomExit;
+        private Bitmap check;
 
         public int X { get; set; } = 0;
         public int Y { get; set; } = 0;
@@ -59,6 +60,7 @@ namespace KakaotalkBot
             accept2 = new Bitmap("수락2.bmp");
             join = new Bitmap("참여.bmp");
             voiceRoomExit = new Bitmap("보룸닫기.bmp");
+            check = new Bitmap("확인.bmp");
         }
 
         public void Update()
@@ -327,6 +329,19 @@ namespace KakaotalkBot
             {
                 int x2 = x + at2.X;
                 int y2 = y + at2.Y;
+                WindowsMacro.Instance.SetCursor(x2, y2);
+                WindowsMacro.Instance.ClickLeft();
+            }
+
+            if (TryFindTemplate_Sampled(
+                    CurrentScreen2, check, out var at3,
+                    tolerance: 15,
+                    searchStep: 1,
+                    gridSampleStep: 1,
+                    maxSamplePoints: 120))
+            {
+                int x2 = x + at3.X;
+                int y2 = y + at3.Y;
                 WindowsMacro.Instance.SetCursor(x2, y2);
                 WindowsMacro.Instance.ClickLeft();
             }
