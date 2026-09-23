@@ -54,7 +54,6 @@ namespace KakaotalkBot
         public bool HasPendingUserSave { get { return departureSavePending || Database.Instance.HasPendingActivity; } }
         public string LastSendError { get; private set; }
         public string LastProcessingError { get; private set; }
-        public long RequestedHistoryUserId { get; set; }
         internal Action<Command, long> OperatorHistoryRequested;
         internal long OperatorNotificationRoomId;
         internal string OperatorNotificationAccount;
@@ -349,8 +348,6 @@ namespace KakaotalkBot
                 if (!command.TryReadMentionText(operation, out target, out body) || (operation == "/이력" && body.Length != 0) || (operation == "/메모" && body.Length == 0))
                 { LastProcessingError = "형식: /이력 @유저 또는 /메모 @유저 내용 (실제 멘션 필요)"; return; }
                 if (operation == "/메모") Database.Instance.AddOperatorMemo(command.ChatId, command.AuthorId, target, body, command.LogId);
-                // 메모 저장은 현재 화면을 바꾸지 않습니다. 이력 조회 요청만 화면을 엽니다.
-                if (operation == "/이력") RequestedHistoryUserId = target;
                 if (operation == "/이력" && OperatorHistoryRequested != null) OperatorHistoryRequested(command, target);
                 return;
             }

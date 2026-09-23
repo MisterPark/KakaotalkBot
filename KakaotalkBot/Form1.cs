@@ -180,7 +180,6 @@ namespace KakaotalkBot
             if (components == null) components = new System.ComponentModel.Container();
 
             tabPage2.Text = "채팅 DB";
-            tabControl1.SelectedTab = tabPage2;
             button3.Text = "DB 목록 읽기";
             button3.SetBounds(8, 33, 104, 23);
             accountSelector = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };

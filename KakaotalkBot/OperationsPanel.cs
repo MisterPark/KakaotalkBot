@@ -70,7 +70,7 @@ namespace KakaotalkBot
             operationsAlerts.DoubleClick += (s, e) =>
             {
                 var item = operationsAlerts.SelectedItem as AlertChoice; if (item == null) return;
-                bot.RequestedHistoryUserId = item.Row.UserId; tabs.SelectedTab = history;
+                LoadOperationsHistory(item.Row.UserId);
             };
             operationsStats = ReadBox(); var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38 };
             operationsMonth = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM", ShowUpDown = true, Width = 110 };
@@ -104,19 +104,12 @@ namespace KakaotalkBot
             operationsHistory.Text = bot.SelectedRoom == null || user == null ? "방과 사용자를 선택하세요." :
                 Database.Instance.OperatorHistory(bot.SelectedRoom.ChatId, user.User.UserId).Replace("\n", "\r\n");
         }
-        private void ShowRequestedHistory(long userId)
+        private void LoadOperationsHistory(long userId)
         {
-            if (closing || IsDisposed || Disposing || operationsPage == null || operationsPage.IsDisposed ||
-                operationsViews == null || operationsViews.IsDisposed) return;
-            int pageIndex = tabControl1.TabPages.IndexOf(operationsPage);
-            if (pageIndex < 0 || operationsViews.TabPages.Count == 0)
-            { operationsStatus.Text = "운영 탭이 준비되지 않아 이력 화면을 열지 못했습니다."; return; }
+            if (closing || IsDisposed || Disposing) return;
             operationsSearch.Text = userId.ToString();
             RefreshOperationsUsers();
             if (operationsUsers.Items.Count > 0) operationsUsers.SelectedIndex = 0;
-            // 부모 탭과 하위 탭의 소속을 확인한 뒤 각각 선택합니다.
-            tabControl1.SelectedIndex = pageIndex;
-            operationsViews.SelectedIndex = 0;
         }
 
         private void TickOperations()
@@ -134,20 +127,7 @@ namespace KakaotalkBot
             string signature = chat + ":" + alerts.Length + ":" + alerts.Count(r => !r.Read);
             if (signature != alertsSignature)
             { operationsAlerts.Items.Clear(); foreach (var row in alerts) operationsAlerts.Items.Add(new AlertChoice { Row = row }); alertsSignature = signature; ShowOperationsUser(); }
-            if (bot.RequestedHistoryUserId > 0)
-            {
-                long requested = bot.RequestedHistoryUserId;
-                // 표시 실패가 나더라도 다음 타이머에서 같은 요청을 무한 반복하지 않습니다.
-                bot.RequestedHistoryUserId = 0;
-                try { ShowRequestedHistory(requested); }
-                catch (ArgumentException error)
-                {
-                    operationsStatus.Text = "이력 화면 표시 실패 · DB 수신 유지: " + error.Message;
-                    try { System.IO.File.WriteAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "operations-ui-error.log"), error.ToString()); }
-                    catch (System.IO.IOException) { }
-                    catch (UnauthorizedAccessException) { }
-                }
-            }
+
         }
     }
 }
