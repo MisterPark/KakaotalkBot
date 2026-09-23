@@ -137,6 +137,7 @@
     <Compile Include="UserActivity.cs" />
     <Compile Include="RoomOperators.cs" />
     <Compile Include="OperationsStore.cs" />
+    <Compile Include="RoomTitles.cs" />
     <Compile Include="OperationsPanel.cs" />
     <Compile Include="OperatorNotifications.cs" />
     <Compile Include="OperatorNotificationsPanel.cs" />

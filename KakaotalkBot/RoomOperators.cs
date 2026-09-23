@@ -111,7 +111,7 @@ namespace KakaotalkBot
 
     public static class OperatorCommandPolicy
     {
-        private static readonly HashSet<string> names = new HashSet<string>(StringComparer.Ordinal) { "/이력", "/메모" };
+        private static readonly HashSet<string> names = new HashSet<string>(StringComparer.Ordinal) { "/이력", "/메모", "/네임드지정", "/네임드해제" };
         public static string Name(string text) { return (text ?? "").TrimStart().Split((char[])null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? ""; }
         public static bool RequiresOperator(string text) { return names.Contains(Name(text)); }
         public static void Register(string command)

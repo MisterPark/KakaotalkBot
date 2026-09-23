@@ -273,7 +273,7 @@ namespace KakaotalkBot
                 ProcessQuizAnswer(chat.AuthorId, chat.Nickname, message);
                 if (OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
                     OperatorCommandPolicy.Name(message) == "/월간랭킹" || OperatorCommandPolicy.Name(message) == "/채팅랭킹" ||
-                    OperatorCommandPolicy.Name(message) == "/레벨랭킹" || OperatorCommandPolicy.Name(message) == "/랭킹" || Database.Instance.Keywords.Any(k => message.StartsWith(k)))
+                    OperatorCommandPolicy.Name(message) == "/네임드" || OperatorCommandPolicy.Name(message) == "/레벨랭킹" || OperatorCommandPolicy.Name(message) == "/랭킹" || Database.Instance.Keywords.Any(k => message.StartsWith(k)))
                     ProcessKeyword(chat.Nickname, message, chat.AuthorId, chat.LogId, chat.ChatId, chat.Mentions);
             }
             return true;
@@ -349,9 +349,37 @@ namespace KakaotalkBot
                 if (!command.TryReadMentionText(operation, out target, out body) || (operation == "/이력" && body.Length != 0) || (operation == "/메모" && body.Length == 0))
                 { LastProcessingError = "형식: /이력 @유저 또는 /메모 @유저 내용 (실제 멘션 필요)"; return; }
                 if (operation == "/메모") Database.Instance.AddOperatorMemo(command.ChatId, command.AuthorId, target, body, command.LogId);
-                RequestedHistoryUserId = target;
+                // 메모 저장은 현재 화면을 바꾸지 않습니다. 이력 조회 요청만 화면을 엽니다.
+                if (operation == "/이력") RequestedHistoryUserId = target;
                 if (operation == "/이력" && OperatorHistoryRequested != null) OperatorHistoryRequested(command, target);
                 return;
+            }
+            if (operation == "/네임드")
+            {
+                int page = 1; string argument = command.Keyword.Substring(operation.Length).Trim();
+                if (argument.Length > 0 && (!int.TryParse(argument, out page) || page < 1))
+                { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "형식: /네임드 [페이지]"); return; }
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, Database.Instance.NamedList(command.ChatId, page)); return;
+            }
+            if (operation == "/네임드지정" || operation == "/네임드해제")
+            {
+                long target; string title; int days = 0;
+                if (!command.TryReadMentionText(operation, out target, out title) || string.IsNullOrWhiteSpace(title))
+                { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "형식: " + operation + " @유저 칭호" + (operation == "/네임드지정" ? " [30일]" : "")); return; }
+                if (operation == "/네임드지정")
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(title, @"\s+(\d+)일$");
+                    if (match.Success)
+                    {
+                        if (!int.TryParse(match.Groups[1].Value, out days) || days < 1 || days > 3650)
+                        { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "기간은 1~3650일로 입력하세요."); return; }
+                        title = title.Substring(0, match.Index).Trim();
+                    }
+                }
+                if (title.Length == 0 || title.Length > 30 || title.Any(char.IsControl))
+                { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "칭호는 줄바꿈 없이 1~30자로 입력하세요."); return; }
+                string result = Database.Instance.ChangeNamedTitle(command.ChatId, command.AuthorId, target, command.LogId, title, days, operation == "/네임드해제");
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, result); return;
             }
             if (operation == "/레벨랭킹")
             {
@@ -456,7 +484,7 @@ namespace KakaotalkBot
                 var user = Database.Instance.GetOrAddUser(targetId, targetNickname);
                 int total = Database.Instance.GetTotalContribution();
                 float contribution = total == 0 ? 0 : user.Contribution * 100f / total;
-                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"=====[유저조회]=====\n닉네임: {Database.Instance.ChatUserName(command.ChatId, targetId, targetNickname)}\n레벨: {user.Level}\n경험치: {user.Experience} (다음 레벨 누적 {user.NextLevelExperience})\n{Database.Instance.PersonalRankings(command.ChatId, targetId, OperationsStore.Month(DateTimeOffset.UtcNow.ToUnixTimeSeconds()))}\n포인트: {user.Point}\n인기도: {user.Popularity}\n채팅 기여도: {contribution:F2}%\n퇴장 횟수: {user.LeaveCount}\n강퇴 횟수: {user.KickCount}\n{Database.Instance.DescribeActivity(command.ChatId, targetId)}\n=================");
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"=====[유저조회]=====\n닉네임: {Database.Instance.ChatUserName(command.ChatId, targetId, targetNickname)}\n칭호: {Database.Instance.NamedTitleDetails(command.ChatId, targetId)}\n레벨: {user.Level}\n경험치: {user.Experience} (다음 레벨 누적 {user.NextLevelExperience})\n{Database.Instance.PersonalRankings(command.ChatId, targetId, OperationsStore.Month(DateTimeOffset.UtcNow.ToUnixTimeSeconds()))}\n포인트: {user.Point}\n인기도: {user.Popularity}\n채팅 기여도: {contribution:F2}%\n퇴장 횟수: {user.LeaveCount}\n강퇴 횟수: {user.KickCount}\n{Database.Instance.DescribeActivity(command.ChatId, targetId)}\n=================");
             }
             else if (command.Keyword.StartsWith("/랭킹"))
             {

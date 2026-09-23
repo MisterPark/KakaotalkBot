@@ -33,8 +33,9 @@ namespace KakaotalkBot
         private UserActivityStore activity = new UserActivityStore();
         internal RoomOperatorStore Operators = new RoomOperatorStore();
         internal OperationsStore Operations = new OperationsStore();
-        public bool HasPendingActivity { get { return activity.Dirty || Operators.Dirty || Operations.Dirty; } }
-        internal void ConfirmActivitySaved() { activity.MarkSaved(); Operators.Dirty = false; Operations.Dirty = false; Operations.ResetPending = false; }
+        internal RoomTitleStore Titles = new RoomTitleStore();
+        public bool HasPendingActivity { get { return activity.Dirty || Operators.Dirty || Operations.Dirty || Titles.Dirty; } }
+        internal void ConfirmActivitySaved() { activity.MarkSaved(); Operators.Dirty = false; Operations.Dirty = false; Operations.ResetPending = false; Titles.Dirty = false; }
         public bool IsRoomOperator(long chatId, long userId)
         { string error; return Operators.Check(chatId, userId, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), out error); }
         public IReadOnlyList<RoomEventRecord> RoomEvents { get { return activity.Events.AsReadOnly(); } }
@@ -101,6 +102,7 @@ namespace KakaotalkBot
                     throw new FormatException("활동 DB에 사용자 DB에 없는 user_id가 있습니다.");
                 activity = next; Operators = nextOperators; UserStorageReady = true; UserStorageError = null;
                 Operations = nextOperations;
+                var titles = new RoomTitleStore(); titles.Load(keywordSheet.ReadActivityTable("DB_RoomTitles", RoomTitleStore.Headers)); Titles = titles;
                 MaintainMonth();
             }
             catch (Exception error) { UserStorageReady = false; UserStorageError = "사용자 DB 읽기 실패: " + error.Message; throw; }
@@ -129,7 +131,7 @@ namespace KakaotalkBot
             if (!UserStorageReady) throw new InvalidOperationException("사용자 DB를 정상적으로 읽기 전에는 저장할 수 없습니다.");
             try
             {
-                keywordSheet.WriteUserData(userTable.Select(user => user.ToRow()).ToList(), activity, Operators, Operations);
+                keywordSheet.WriteUserData(userTable.Select(user => user.ToRow()).ToList(), activity, Operators, Operations, Titles);
                 UserStorageError = null;
             }
             catch (Exception error) { UserStorageError = "사용자 DB 저장 실패: " + error.Message; throw; }
@@ -296,7 +298,10 @@ namespace KakaotalkBot
         public void MaintainMonth()
         {
             if (!UserStorageReady) return;
-            if (Operations.AdvanceMonth(userTable, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) UpdateUserTable();
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            bool reset = Operations.AdvanceMonth(userTable, now);
+            Titles.AwardMonthly(Operations, now);
+            if (reset || Titles.Dirty) UpdateUserTable();
         }
 
         public void AddOperatorMemo(long chat, long author, long target, string text, long log = 0)
@@ -321,7 +326,7 @@ namespace KakaotalkBot
         {
             User user; FindUser(target, out user);
             return ChatUserName(chat, target) + (includeUserIds ? " · ID " + target : "") +
-                "\n[입퇴장 이력]\n" + string.Join("\n", activity.Events.Where(r => r.ChatId == chat && r.UserId == target).OrderByDescending(r => r.LogId)
+                "\n칭호: " + NamedTitleDetails(chat, target) + "\n[입퇴장 이력]\n" + string.Join("\n", activity.Events.Where(r => r.ChatId == chat && r.UserId == target).OrderByDescending(r => r.LogId)
                     .Select(r => OperationsStore.LocalTime(r.OccurredAt) + " " + (r.Kind == "join" ? "입장" : r.Kind == "kick" ? "강퇴" : "퇴장") + " · " + r.Nickname)) +
                 "\n[닉네임 변경 이력]\n" + string.Join("\n", activity.Nicknames.Where(r => r.ChatId == chat && r.UserId == target).OrderByDescending(r => r.ObservedAt)
                     .Select(r => OperationsStore.LocalTime(r.ObservedAt) + " " + r.Before + " → " + r.After)) +
@@ -347,6 +352,46 @@ namespace KakaotalkBot
             var ids = new HashSet<string>(userTable.Select(u => u.UserId.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             // 긴 ID가 메모 본문 등에 남아 있어도 채팅 메시지로 노출하지 않습니다.
             return System.Text.RegularExpressions.Regex.Replace(text, @"(?<!\d)\d{10,19}(?!\d)", match => ids.Contains(match.Value) ? "[사용자]" : match.Value);
+        }
+
+        public string NamedTitles(long chat, long userId)
+        {
+            var rows = Titles.Active(chat, userId, DateTimeOffset.UtcNow.ToUnixTimeSeconds()).OrderBy(r => r.Title).ToArray();
+            return rows.Length == 0 ? "없음" : string.Join(" · ", rows.Select(r => r.Title).Distinct());
+        }
+        public string NamedTitleDetails(long chat, long userId)
+        {
+            var rows = Titles.Active(chat, userId, DateTimeOffset.UtcNow.ToUnixTimeSeconds()).OrderBy(r => r.Title).ToArray();
+            return rows.Length == 0 ? "없음" : string.Join(" · ", rows.Select(r => r.Title + " (" +
+                OperationsStore.LocalTime(r.GrantedAt).Substring(0, 10) + " 획득" +
+                (r.ExpiresAt == 0 ? " · 영구" : " · " + OperationsStore.LocalTime(r.ExpiresAt) + " 만료") + ")"));
+        }
+
+        public string NamedList(long chat, int page = 1)
+        {
+            if (page < 1) throw new ArgumentException("페이지는 1 이상이어야 합니다.");
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var groups = Titles.Rows.Values.Where(r => r.ChatId == chat && r.Active(now) &&
+                FindRoomUser(chat, r.UserId) != null && FindRoomUser(chat, r.UserId).IsPresent == true)
+                .GroupBy(r => r.UserId).OrderBy(g => ChatUserName(chat, g.Key)).ThenBy(g => g.Key).ToArray();
+            int pages = Math.Max(1, (groups.Length + 19) / 20);
+            if (page > pages) return "네임드 목록은 " + pages + "페이지까지 있습니다.";
+            return "[현재 방 네임드 · " + page + "/" + pages + "]\n" + (groups.Length == 0 ? "참여 중인 네임드가 없습니다." :
+                string.Join("\n", groups.Skip((page - 1) * 20).Take(20).Select(g => ChatUserName(chat, g.Key) + " · " +
+                    string.Join(" · ", g.Select(r => r.Title).Distinct())))) + "\n※ /네임드 [페이지] · 현재 참여 확인 기준";
+        }
+        internal string ChangeNamedTitle(long chat, long author, long userId, long log, string title, int days, bool revoke)
+        {
+            if (!UserStorageReady || !IsRoomOperator(chat, author)) throw new InvalidOperationException("현재 방 운영진만 네임드를 변경할 수 있습니다.");
+            title = (title ?? "").Trim();
+            if (title.Length == 0 || title.Length > 30 || title.Any(char.IsControl)) throw new ArgumentException("칭호는 줄바꿈 없이 1~30자로 입력하세요.");
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            bool changed;
+            if (revoke) changed = Titles.Revoke(chat, userId, title, now, author);
+            else { GetOrAddUser(userId); changed = Titles.Grant(chat, userId, author, log, title, days, now); }
+            if (Titles.Dirty) UpdateUserTable();
+            return changed ? (revoke ? "네임드 칭호를 해제했습니다: " : "네임드 칭호를 지정했습니다: ") + title :
+                revoke ? "해당 사용자의 활성 칭호를 찾지 못했습니다." : "이미 해당 칭호를 보유하고 있습니다.";
         }
 
         private User[] LevelRankUsers(long chat)
@@ -443,6 +488,14 @@ namespace KakaotalkBot
             return keywordList;
         }
 
+        private static string CompleteCommandHelp(string text)
+        {
+            if (!text.Contains("/레벨랭킹")) text += "\n/레벨랭킹";
+            if (!text.Contains("/네임드")) text += "\n/네임드 [페이지]";
+            if (!text.Contains("/네임드지정")) text += "\n[운영진 전용 · 네임드]\n/네임드지정 @유저 칭호 [기간일]\n예: /네임드지정 @유저 토론왕 30일\n/네임드해제 @유저 칭호";
+            return text;
+        }
+
         public string GetAnswer(string keyword)
         {
             var keywords = commands;
@@ -450,8 +503,7 @@ namespace KakaotalkBot
             {
                 if (row[0] == keyword && row.Count > 1) 
                 {
-                    return (keyword == "/?" || keyword == "/명령어") && !row[1].Contains("/레벨랭킹")
-                        ? row[1].Replace("/채팅랭킹", "/채팅랭킹\n/레벨랭킹") : row[1];
+                    return keyword == "/?" || keyword == "/명령어" ? CompleteCommandHelp(row[1]) : row[1];
                 }
             }
 
