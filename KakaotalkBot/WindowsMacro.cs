@@ -498,99 +498,52 @@ namespace KakaotalkBot
             return text;
         }
 
-        public void SendTextToChatroom(string chatroomName, string message)
+        private int chatSendInProgress;
+        private readonly Queue<Action> chatSendQueue = new Queue<Action>();
+        private void RunChatSend(Action action)
         {
-            //soliloquyTimer.Reset();
-
-            IntPtr hwndMain = FindWindow(null, chatroomName);
-            IntPtr hwndEdit = FindWindowEx(hwndMain, IntPtr.Zero, "RichEdit50W", null);
-
-            try
+            lock (chatSendQueue)
             {
-                Clipboard.SetText(message);
-
-                SetForegroundWindow(hwndMain);
-                Thread.Sleep(100);
-                SendCtrlKey(hwndEdit, 'v');
-
-                SendReturn();
-                Thread.Sleep(300);
+                chatSendQueue.Enqueue(action);
+                if (chatSendInProgress != 0) return;
+                chatSendInProgress = 1;
+                try { while (chatSendQueue.Count > 0) chatSendQueue.Dequeue()(); }
+                catch { chatSendQueue.Clear(); throw; }
+                finally { chatSendInProgress = 0; }
             }
-            catch (Exception e)
-            {
-            }
-
         }
 
-        public void SetTextToChatroom(string chatroomName, string message)
+        internal void SendOperatorNotice(string room, int pid, string text)
+        { RunChatSend(() => new NativeMentionInput(room, pid).SendPlain(Database.Instance.ForChat(text))); }
+
+        /// <summary>닉네임으로 개인 멘션 객체를 만들고 ID로 대상을 지정하여 본문과 한 번에 전송한다.</summary>
+        public void SendMentionToChatroom(string chatroomName, long userId, string candidateNickname, string message, int expectedProcessId = 0, IEnumerable<string> fallbackNicknames = null)
         {
-            //soliloquyTimer.Reset();
+            RunChatSend(() => new KakaoMentionSender(chatroomName, expectedProcessId).Send(userId, candidateNickname, Database.Instance.ForChat(message), fallbackNicknames));
+        }
 
-            IntPtr hwndMain = FindWindow(null, chatroomName);
-            IntPtr hwndEdit = FindWindowEx(hwndMain, IntPtr.Zero, "RichEdit50W", null);
-
-            try
+        public void SendTextToChatroom(string chatroomName, string message)
+        {
+            message = Database.Instance.ForChat(message);
+            RunChatSend(() =>
             {
-                Clipboard.SetText(message);
-
-                SetForegroundWindow(hwndMain);
-                Thread.Sleep(100);
-                SendCtrlKey(hwndEdit, 'v');
-
-                Thread.Sleep(100);
-
-
-                AutomationElement main = AutomationElement.FromHandle(hwndMain);
-                if (main == null)
+                IntPtr hwndMain = FindWindow(null, chatroomName);
+                if (hwndMain == IntPtr.Zero) return;
+                IntPtr hwndEdit = FindWindowEx(hwndMain, IntPtr.Zero, "RichEdit50W", null);
+                if (hwndEdit == IntPtr.Zero) return;
+                try
                 {
-                    return;
+                    Clipboard.SetText(message);
+                    SetForegroundWindow(hwndMain);
+                    Thread.Sleep(100);
+                    SendCtrlKey(hwndEdit, 'v');
+                    SendReturn();
+                    Thread.Sleep(300);
                 }
-
-                AutomationElement evaWindow = main.FindFirst(
-                    TreeScope.Descendants,
-                    new PropertyCondition(
-                        AutomationElement.ClassNameProperty,
-                        "EVA_Window_Dblclk"
-                    )
-                );
-
-                if (evaWindow == null)
+                catch (Exception)
                 {
-                    return;
                 }
-
-                AutomationElement evaChild = evaWindow.FindFirst(
-                    TreeScope.Descendants,
-                    new PropertyCondition(
-                        AutomationElement.ClassNameProperty,
-                        "EVA_ChildWindow_Dblclk"
-                    )
-                );
-
-                if (evaChild == null)
-                {
-                    return;
-                }
-
-
-                System.Windows.Rect rect = evaChild.Current.BoundingRectangle;
-
-                int x = (int)rect.Left + 5;
-                int y = (int)rect.Top + 5;
-
-                SetCursorPos(x, y);
-                ClickLeft();
-                Thread.Sleep(50);
-                ClickLeft();
-
-                SendReturn();
-
-                Thread.Sleep(300);
-            }
-            catch (Exception e)
-            {
-            }
-
+            });
         }
 
         public Point GetWindowPos(IntPtr hwnd)

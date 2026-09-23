@@ -1,0 +1,148 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.Serialization;
+using KakaotalkBot;
+
+internal static class BotCommandBridgeTests
+{
+    private static int Main()
+    {
+        try
+        {
+            // 생성자의 보이스룸 이미지 읽기와 외부 서비스 초기화를 제외하고 명령 연결만 검증합니다.
+            var bot = (Bot)FormatterServices.GetUninitializedObject(typeof(Bot));
+            var commands = new Queue<Command>();
+            var answers = new Queue<Bot.QuizAnswer>();
+            Set(bot, "commands", commands);
+            Set(bot, "quizAnswers", answers);
+            Set(bot, "chatLog", new List<string>());
+            var room = new ChatRoomInfo();
+            typeof(ChatRoomInfo).GetProperty("ChatId").SetValue(room, 10L, null);
+            typeof(Bot).GetProperty("SelectedRoom").SetValue(bot, room, null);
+            Database.Instance.Keywords.Add("/테스트");
+            Database.Instance.AddUser(7, "검증사용자");
+            Type messageType = typeof(Bot).Assembly.GetType("KakaotalkBot.ChatMessage");
+            MethodInfo handle = typeof(Bot).GetMethod("HandleIncomingMessage", BindingFlags.Instance | BindingFlags.NonPublic);
+            var mentions = new[]
+            {
+                new ChatMention(9007199254740993L, new[] { 1, 3 }, 3, "동일닉"),
+                new ChatMention(8, new[] { 2 }, 3, "동일닉")
+            };
+            Action<long, long, string, string> deliver = (chat, log, text, eventCommand) =>
+            {
+                object message = Activator.CreateInstance(messageType, true);
+                messageType.GetField("ChatId").SetValue(message, chat);
+                messageType.GetField("LogId").SetValue(message, log);
+                messageType.GetField("AuthorId").SetValue(message, 7L);
+                messageType.GetField("Nickname").SetValue(message, "검증사용자");
+                messageType.GetField("Message").SetValue(message, text);
+                messageType.GetField("EventCommand").SetValue(message, eventCommand);
+                if (log == 100 || eventCommand != null) messageType.GetField("Mentions").SetValue(message, mentions);
+                handle.Invoke(bot, new[] { message });
+            };
+            deliver(10, 100, "/테스트", null);
+            deliver(10, 101, "/테스트", null);
+            deliver(10, 102, "퀴즈 답변", null);
+            deliver(999, 103, "/테스트", null);
+            deliver(10, 104, "/입장", "/입장");
+            if (commands.Count != 3 || answers.Count != 3) throw new Exception("명령/퀴즈 분기 또는 방 격리 오류");
+            if (answers.Any(answer => answer.AuthorId != 7)) throw new Exception("퀴즈 작성자 ID 누락");
+            var values = commands.ToArray();
+            if (values[0].LogId != 100 || values[1].LogId != 101 || values[2].Keyword != "/입장") throw new Exception("명령 순서 오류");
+            if (values.Any(c => c.AuthorId != 7 || c.ChatId != 10 || c.Nickname != "검증사용자")) throw new Exception("명령 작성자 정보 오류");
+            if (Database.Instance.UserTable[0].Contribution != 3) throw new Exception("기여도 중복/누락 오류");
+            if (!values[0].MentionedUserIds.SequenceEqual(new long[] { 9007199254740993L, 8 })) throw new Exception("멘션 대상 ID 전달 오류");
+            if (values[0].Mentions.Any(m => m.Nickname != "동일닉") || !values[0].Mentions[0].At.SequenceEqual(new[] { 1, 3 })) throw new Exception("동일 닉네임의 사용자 ID 구분 또는 반복 멘션 정보 오류");
+            if (values[1].Mentions.Count != 0 || values[2].Mentions.Count != 0) throw new Exception("일반 메시지 또는 입퇴장 이벤트로 멘션 정보가 유출됨");
+            var copy = values[0];
+            var mutableMentions = new List<ChatMention>(mentions);
+            copy.Mentions = mutableMentions;
+            mutableMentions.Clear();
+            if (copy.Mentions.Count != 2) throw new Exception("명령이 외부 멘션 목록 변경에 영향받음");
+            deliver(10, 105, "/메모 @대상 사유", null);
+            if (commands.Count != 4 || commands.Last().Keyword != "/메모 @대상 사유" || commands.Last().ReceivedAt <= 0)
+                throw new Exception("운영진 명령이 키워드 시트 등록 없이 수신되지 않음");
+            Set(bot, "isBotRunning", true);
+            int queuedBeforeFailure = commands.Count;
+            typeof(Bot).GetMethod("DeferProcessing", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(bot, new object[] { new System.IO.IOException("시험 저장 실패") });
+            if (!bot.IsBotRunning || commands.Count != queuedBeforeFailure || bot.SelectedRoom != room)
+                throw new Exception("복구 가능한 오류가 수신 상태나 명령 큐를 초기화함");
+            bot.Update();
+            if (!bot.IsBotRunning || commands.Count != queuedBeforeFailure || bot.LastProcessingError == null)
+                throw new Exception("재시도 대기 중 수신 상태·큐 보존 실패");
+            Set(bot, "isBotRunning", false);
+            long privateId = 9007199254740993L;
+            Database.Instance.AddUser(privateId, "검증대상");
+            var filter = typeof(Database).GetMethod("ForChat", BindingFlags.Instance | BindingFlags.NonPublic);
+            string publicText = (string)filter.Invoke(Database.Instance, new object[] {
+                "사용자 ID: " + privateId + "\n요청자 ID: " + privateId + "\n사용자 " + privateId +
+                " · ID " + privateId + "\n작성자: " + privateId + "\n메모 " + privateId + "\n포인트 100 / 레벨 2" });
+            if (publicText.Contains(privateId.ToString()) || !publicText.Contains("포인트 100 / 레벨 2"))
+                throw new Exception("채팅 ID 비공개 처리 오류");
+            string internalHistory = Database.Instance.OperatorHistory(10, privateId);
+            string publicHistory = Database.Instance.OperatorHistory(10, privateId, false);
+            if (!internalHistory.Contains(privateId.ToString()) || publicHistory.Contains(privateId.ToString()))
+                throw new Exception("내부 이력/채팅 이력 ID 표시 분리 오류");
+            object activity = typeof(Database).GetField("activity", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(Database.Instance);
+            var observe = activity.GetType().GetMethod("Observe", BindingFlags.Instance | BindingFlags.NonPublic);
+            observe.Invoke(activity, new object[] { 10L, privateId, "첫방이름", true, 1900000000L, 1000L, "chat" });
+            observe.Invoke(activity, new object[] { 20L, privateId, "둘째방이름", true, 1900000001L, 1001L, "chat" });
+            if (Database.Instance.ChatUserName(10, privateId) != "첫방이름" || Database.Instance.ChatUserName(20, privateId) != "둘째방이름")
+                throw new Exception("방별 닉네임 혼합");
+            observe.Invoke(activity, new object[] { 10L, privateId, "첫방변경", true, 1900000002L, 1002L, "chat" });
+            if (Database.Instance.ChatUserName(20, privateId) != "둘째방이름" ||
+                Database.Instance.NicknameHistory.Count(n => n.UserId == privateId && n.ChatId == 10) != 1 ||
+                Database.Instance.NicknameHistory.Any(n => n.UserId == privateId && n.ChatId == 20))
+                throw new Exception("다른 방 이름으로 변경 이력 생성");
+            if (Database.Instance.ChatUserName(30, privateId) != "이름 미확인 사용자")
+                throw new Exception("알 수 없는 방에서 전역 닉네임 노출");
+            Database.Instance.GetOrAddUser(privateId).Experience = 200;
+            Database.Instance.AddUser(8101, "다른방전역이름").Experience = 200;
+            observe.Invoke(activity, new object[] { 10L, 8101L, "공동순위", true, 1900000003L, 1003L, "chat" });
+            Database.Instance.AddUser(8102, "퇴장사용자").Experience = 9999;
+            observe.Invoke(activity, new object[] { 10L, 8102L, "퇴장사용자", false, 1900000003L, 1003L, "chat" });
+            string levelRanking = Database.Instance.LevelRanking(10);
+            if (!levelRanking.Contains("1위 첫방변경") || !levelRanking.Contains("1위 공동순위") || levelRanking.Contains("퇴장사용자") || levelRanking.Contains("다른방전역이름"))
+                throw new Exception("레벨 공동 순위·방별 닉네임·퇴장 제외 오류");
+            object operations = typeof(Database).GetField("Operations", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(Database.Instance);
+            var recordType = typeof(Bot).Assembly.GetType("KakaotalkBot.OperationRecord");
+            Action<long, long, long, string> addMonthly = (chatId, idValue, count, month) => {
+                object record = Activator.CreateInstance(recordType, true);
+                foreach (var pair in new Dictionary<string, object> { { "Kind", "monthly" }, { "Key", "rank-test:" + chatId + ":" + idValue + ":" + month },
+                    { "ChatId", chatId }, { "UserId", idValue }, { "Count", count }, { "Month", month } }) recordType.GetField(pair.Key).SetValue(record, pair.Value);
+                operations.GetType().GetMethod("Put", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(operations, new[] { record });
+            };
+            addMonthly(10, privateId, 30, "2026-09"); addMonthly(10, 8101, 30, "2026-09");
+            addMonthly(20, 8102, 999, "2026-09"); addMonthly(10, 8102, 999, "2026-08");
+            string personal = Database.Instance.PersonalRankings(10, privateId, "2026-09");
+            if (!personal.Contains("1위 / 2명 (30회)") || !personal.Contains("레벨 순위: 1위")) throw new Exception("월·방 분리 개인 순위 오류");
+            if (!Database.Instance.PersonalRankings(10, 8102, "2026-09").Contains("순위 없음 (0회)")) throw new Exception("채팅 없는 사용자 순위 오류");
+            deliver(10, 110, "/레벨랭킹", null);
+            if (commands.Last().Keyword != "/레벨랭킹") throw new Exception("레벨랭킹 명령 수신 오류");
+            int queuedBeforeOwn = commands.Count, answersBeforeOwn = answers.Count;
+            object ownMessage = Activator.CreateInstance(messageType, true);
+            foreach (var pair in new Dictionary<string, object> { { "ChatId", 10L }, { "LogId", 2000L }, { "AuthorId", 8200L },
+                { "SendAt", 1900000010L }, { "Nickname", "봇계정" }, { "Message", "/테스트" }, { "IsOwn", true } })
+                messageType.GetField(pair.Key).SetValue(ownMessage, pair.Value);
+            handle.Invoke(bot, new[] { ownMessage });
+            User ownUser;
+            if (!Database.Instance.FindUser(8200, out ownUser) || Database.Instance.ChatUserName(10, 8200) != "봇계정")
+                throw new Exception("봇 계정 등록 또는 방별 닉네임 누락");
+            messageType.GetField("Message").SetValue(ownMessage, "자동 응답");
+            messageType.GetField("LogId").SetValue(ownMessage, 2001L);
+            handle.Invoke(bot, new[] { ownMessage });
+            if (commands.Count != queuedBeforeOwn || answers.Count != answersBeforeOwn || ownUser.Experience != 0 || ownUser.Contribution != 0 ||
+                !Database.Instance.PersonalRankings(10, 8200, "2030-03").Contains("순위 없음 (0회)"))
+                throw new Exception("봇 출력이 명령·퀴즈·보상으로 재처리됨");
+            Console.WriteLine("PASS: Bot command queue, mention IDs, quiz, contribution, room isolation (no sends)");
+            return 0;
+        }
+        catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+    }
+
+    private static void Set(object target, string name, object value)
+    { typeof(Bot).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).SetValue(target, value); }
+}

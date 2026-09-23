@@ -64,6 +64,7 @@
             this.textBox1 = new System.Windows.Forms.TextBox();
             this.richTextBox1 = new System.Windows.Forms.RichTextBox();
             this.openFileDialog1 = new System.Windows.Forms.OpenFileDialog();
+            this.button4 = new System.Windows.Forms.Button();
             this.tabControl1.SuspendLayout();
             this.tabPage1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox3)).BeginInit();
@@ -229,6 +230,7 @@
             // 
             // tabPage2
             // 
+            this.tabPage2.Controls.Add(this.button4);
             this.tabPage2.Controls.Add(this.richTextBox2);
             this.tabPage2.Controls.Add(this.numericUpDown2);
             this.tabPage2.Controls.Add(this.numericUpDown1);
@@ -250,7 +252,7 @@
             this.tabPage2.Location = new System.Drawing.Point(4, 22);
             this.tabPage2.Name = "tabPage2";
             this.tabPage2.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage2.Size = new System.Drawing.Size(818, 627);
+            this.tabPage2.Size = new System.Drawing.Size(818, 701);
             this.tabPage2.TabIndex = 1;
             this.tabPage2.Text = "채팅";
             this.tabPage2.UseVisualStyleBackColor = true;
@@ -445,6 +447,15 @@
             this.openFileDialog1.FileName = "openFileDialog1";
             this.openFileDialog1.RestoreDirectory = true;
             // 
+            // button4
+            // 
+            this.button4.Location = new System.Drawing.Point(429, 250);
+            this.button4.Name = "button4";
+            this.button4.Size = new System.Drawing.Size(279, 23);
+            this.button4.TabIndex = 19;
+            this.button4.Text = "button4";
+            this.button4.UseVisualStyleBackColor = true;
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 12F);
@@ -511,6 +522,7 @@
         private System.Windows.Forms.CheckBox checkBox2;
         private System.Windows.Forms.PictureBox pictureBox2;
         private System.Windows.Forms.PictureBox pictureBox3;
+        private System.Windows.Forms.Button button4;
     }
 }
 

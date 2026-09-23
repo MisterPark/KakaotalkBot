@@ -1,0 +1,14 @@
+{
+  "name": "kakaotalkbot-loco-sender",
+  "version": "0.1.0",
+  "private": true,
+  "description": "사용자 ID 멘션 전송 호환성 확인용 보조 프로세스",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node bridge.js"
+  },
+  "dependencies": {
+    "node-kakao": "4.5.0"
+  }
+}

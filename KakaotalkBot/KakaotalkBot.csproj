@@ -43,7 +43,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
+    <PlatformTarget>x64</PlatformTarget>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
@@ -107,6 +107,9 @@
     <Compile Include="Article.cs" />
     <Compile Include="Bot.cs" />
     <Compile Include="Command.cs" />
+    <Compile Include="LocoMentionSender.cs" />
+    <Compile Include="KakaoInputMentions.cs" />
+    <Compile Include="KakaoMentionSender.cs" />
     <Compile Include="Quiz.cs" />
     <Compile Include="CustomTimer.cs" />
     <Compile Include="Database.cs" />
@@ -118,6 +121,9 @@
     </Compile>
     <Compile Include="GoogleSheetHelper.cs" />
     <Compile Include="KakaoTalkDecryptor.cs" />
+    <Compile Include="ChatSqlite.cs" />
+    <Compile Include="ChatDatabaseSnapshot.cs" />
+    <Compile Include="ChatDatabaseReceiver.cs" />
     <Compile Include="News.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -128,6 +134,12 @@
     <Compile Include="Time.cs" />
     <Compile Include="Topic.cs" />
     <Compile Include="User.cs" />
+    <Compile Include="UserActivity.cs" />
+    <Compile Include="RoomOperators.cs" />
+    <Compile Include="OperationsStore.cs" />
+    <Compile Include="OperationsPanel.cs" />
+    <Compile Include="OperatorNotifications.cs" />
+    <Compile Include="OperatorNotificationsPanel.cs" />
     <Compile Include="VoiceRoomBot.cs" />
     <Compile Include="WindowInfo.cs" />
     <Compile Include="WindowsMacro.cs" />

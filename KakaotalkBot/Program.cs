@@ -67,7 +67,7 @@ namespace KakaotalkBot
                 {
                     Time.Update();
 
-                    if(StaticVariable.AutoReboot)
+                    if(StaticVariable.AutoReboot && bot.SelectedRoom == null)
                     {
                         if (string.IsNullOrEmpty(bot.TargetWindow) == false)
                         {

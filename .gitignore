@@ -398,3 +398,11 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# 자동 생성되는 채팅 DB 사본
+**/DecryptedChat/
+
+# LOCO 보조 기기의 로컬 설정
+**/LocoSenderData/
+tools/LocoSender/data/
+tools/LocoSender/client-profile.json

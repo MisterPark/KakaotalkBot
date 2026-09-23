@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace KakaotalkBot
@@ -47,6 +49,15 @@ namespace KakaotalkBot
         private Bot bot;
         private VoiceRoomBot voiceRoomBot;
         private DateTime lastBotResetTime;
+        private readonly CancellationTokenSource catalogCancellation = new CancellationTokenSource();
+        private Task<ChatCatalog> catalogTask;
+        private ChatCatalog catalog;
+        private ComboBox accountSelector;
+        private TextBox roomSearch;
+        private TextBox ownIdInput;
+        private Label databaseStatus;
+        private bool closing, closeReady;
+        private string databaseError;
 
         public Form1(Bot bot, VoiceRoomBot voiceRoomBot)
         {
@@ -55,6 +66,8 @@ namespace KakaotalkBot
 
             instance = this;
             InitializeComponent();
+            InitializeDatabaseControls();
+            InitializeOperationsControls();
 
             timer = new System.Windows.Forms.Timer();
             timer.Interval = 20;
@@ -67,16 +80,48 @@ namespace KakaotalkBot
             textBox2.Text = Settings.Instance.ApplicationName;
             textBox3.Text = Settings.Instance.SpreadsheetId;
 
-            Database.Instance.Initialize(Settings.Instance.ApplicationName, Settings.Instance.SpreadsheetId);
+            try { Database.Instance.Initialize(Settings.Instance.ApplicationName, Settings.Instance.SpreadsheetId); }
+            catch (Exception error) { databaseError = "DB 초기화 실패: " + error.GetBaseException().Message; }
 
             Application.ApplicationExit += new EventHandler(OnApplicationExit);
 
-            UpdateWindowList();
             this.voiceRoomBot = voiceRoomBot;
+            Shown += (sender, args) => RefreshRoomCatalog();
         }
 
         private void Timer_Tick(object sender, EventArgs e)
         {
+            TickOperations();
+            if (catalogTask != null && catalogTask.IsCompleted)
+            {
+                var completed = catalogTask;
+                catalogTask = null;
+                if (completed.IsFaulted) databaseError = "방 목록 읽기 실패: " + completed.Exception.GetBaseException().Message;
+                else if (!completed.IsCanceled)
+                {
+                    catalog = completed.Result;
+                    accountSelector.Items.Clear();
+                    accountSelector.Items.Add("모든 계정");
+                    foreach (string account in catalog.Rooms.Select(r => r.AccountPath).Distinct()) accountSelector.Items.Add(Path.GetFileName(account));
+                    accountSelector.SelectedIndex = 0;
+                    databaseStatus.Text = catalog.Rooms.Count + "개 방 · " + string.Join(" / ", catalog.Errors);
+                    foreach (ListViewItem item in listView1.Items)
+                    {
+                        var room = item.Tag as ChatRoomInfo;
+                        if (room != null && room.AccountPath == Settings.Instance.ChatAccountPath && room.ChatId == Settings.Instance.ChatRoomId)
+                        { item.Selected = true; item.EnsureVisible(); break; }
+                    }
+                }
+            }
+            bool available = !closing && !bot.IsBotRunning && !bot.IsReceiverStopping && catalogTask == null;
+            listView1.Enabled = accountSelector.Enabled = roomSearch.Enabled = ownIdInput.Enabled = textBox1.Enabled = available;
+            button3.Enabled = available;
+            button2.Enabled = !bot.IsReceiverStopping && catalogTask == null && bot.SelectedRoom != null;
+            button2.Text = bot.IsBotRunning ? "DB 수신 중지" : bot.IsReceiverStopping ? "수신 종료 중…" : "DB 수신 시작";
+            if (bot.HasReceiver && catalogTask == null) databaseStatus.Text = bot.ReceiveStatus;
+            if (databaseError != null) databaseStatus.Text = databaseError;
+            if (bot.LastSendError != null) databaseStatus.Text = bot.LastSendError;
+            if (bot.LastProcessingError != null) databaseStatus.Text = bot.LastProcessingError;
             if (bot.IsBotRunning)
             {
                 button2.BackColor = Color.Green;
@@ -124,22 +169,73 @@ namespace KakaotalkBot
 
         private void OnApplicationExit(object sender, EventArgs e)
         {
+            catalogCancellation.Cancel();
+            bot.Stop();
             Program.ShutdownFlag = true;
         }
 
-
-        private void UpdateWindowList()
+        private void InitializeDatabaseControls()
         {
-            listView1.Items.Clear();
+            // 디자이너가 컨테이너를 만들지 않은 경우 직접 생성하여 툴팁도 폼과 함께 해제합니다.
+            if (components == null) components = new System.ComponentModel.Container();
 
-            List<WindowInfo> windowList = WindowsMacro.Instance.GetWindowList();
-            foreach (WindowInfo window in windowList)
+            tabPage2.Text = "채팅 DB";
+            tabControl1.SelectedTab = tabPage2;
+            button3.Text = "DB 목록 읽기";
+            button3.SetBounds(8, 33, 104, 23);
+            accountSelector = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+            accountSelector.SetBounds(118, 33, 304, 23);
+            accountSelector.SelectedIndexChanged += (sender, args) => FilterRooms();
+            roomSearch = new TextBox();
+            roomSearch.SetBounds(8, 62, 414, 21);
+            roomSearch.TextChanged += (sender, args) => FilterRooms();
+            listView1.SetBounds(8, 90, 414, 154);
+            listView1.FullRowSelect = true;
+            listView1.MultiSelect = false;
+            columnHeader1.Text = "채팅방";
+            columnHeader1.Width = 235;
+            columnHeader2.Text = "방 ID";
+            columnHeader2.Width = 155;
+            databaseStatus = new Label { AutoSize = false, Text = "DB 목록을 읽을 준비 중입니다." };
+            databaseStatus.SetBounds(8, 611, 796, 38);
+            var ownLabel = new Label { AutoSize = false, Text = "본인 작성자 ID (자동 확인 실패 시 입력)" };
+            ownLabel.SetBounds(428, 550, 365, 20);
+            ownIdInput = new TextBox { Text = Settings.Instance.ChatOwnAuthorId == 0 ? "" : Settings.Instance.ChatOwnAuthorId.ToString() };
+            ownIdInput.SetBounds(428, 574, 365, 21);
+            var outputLabel = new Label { AutoSize = false, Text = "저장 위치: " + ChatCatalog.OutputRoot };
+            outputLabel.SetBounds(8, 654, 796, 36);
+            tabPage2.Controls.AddRange(new Control[] { accountSelector, roomSearch, databaseStatus, ownLabel, ownIdInput, outputLabel });
+            var tips = new ToolTip(components);
+            tips.SetToolTip(textBox1, "답변을 보낼 카카오톡 채팅창 이름입니다. DB의 방 이름과 다르면 수정하세요.");
+            tips.SetToolTip(roomSearch, "방 이름 또는 방 ID로 검색합니다.");
+            tips.SetToolTip(accountSelector, "복호화 가능한 계정 목록입니다. 현재 로그인 계정이라고 단정하지 않습니다.");
+            richTextBox1.ReadOnly = true;
+        }
+
+
+        private void RefreshRoomCatalog()
+        {
+            if (catalogTask != null || bot.IsBotRunning || bot.IsReceiverStopping) return;
+            databaseError = null;
+            bot.SelectRoom(null);
+            textBox1.Clear();
+            databaseStatus.Text = "계정과 채팅방 DB 목록을 읽는 중…";
+            catalogTask = Task.Run(() => ChatCatalog.Load(catalogCancellation.Token), catalogCancellation.Token);
+        }
+
+        private void FilterRooms()
+        {
+            listView1.BeginUpdate();
+            listView1.Items.Clear();
+            if (catalog != null)
+            foreach (var room in catalog.Rooms.OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(r => r.ChatId))
             {
-                string[] strings = { window.Title, window.Handle.ToString() };
-                ListViewItem item = new ListViewItem(strings);
-                item.Tag = window.Handle;
-                listView1.Items.Add(item);
+                if (string.Equals(room.Name?.Trim(), "(알 수 없음)", StringComparison.Ordinal)) continue;
+                if (accountSelector.SelectedIndex > 0 && Path.GetFileName(room.AccountPath) != Convert.ToString(accountSelector.SelectedItem)) continue;
+                if ((room.Name + " " + room.ChatId).IndexOf(roomSearch.Text.Trim(), StringComparison.OrdinalIgnoreCase) < 0) continue;
+                listView1.Items.Add(new ListViewItem(new[] { room.Name, room.ChatId.ToString() }) { Tag = room });
             }
+            listView1.EndUpdate();
         }
 
         public void UpdateChatLog(string text)
@@ -202,8 +298,37 @@ namespace KakaotalkBot
             RegisterHotKey(this.Handle, 2, 0, (int)Keys.F6);
         }
 
-        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        private async void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
+            if (!closeReady)
+            {
+                e.Cancel = true;
+                if (closing) return;
+                closing = true;
+                timer.Stop();
+                Enabled = false;
+                bot.Stop();
+                if (bot.HasPendingUserSave)
+                {
+                    // 저장되지 않은 경험치·방 상태·이력을 버리지 않도록 재시도 기회를 남긴다.
+                    closing = false;
+                    Enabled = true;
+                    timer.Start();
+                    databaseStatus.Text = bot.LastProcessingError;
+                    return;
+                }
+                catalogCancellation.Cancel();
+                databaseStatus.Text = "수신 작업을 종료하고 키를 해제하는 중…";
+                try
+                {
+                    if (catalogTask != null) await catalogTask;
+                    await bot.ReceiverCompletion;
+                }
+                catch (Exception) { }
+                closeReady = true;
+                Close();
+                return;
+            }
             timer.Stop();
 
             UnregisterHotKey(this.Handle, 2);
@@ -213,24 +338,47 @@ namespace KakaotalkBot
 
         private void button2_Click(object sender, EventArgs e)
         {
-            bot.UpdateWindowList();
-            bot.IsBotRunning = !bot.IsBotRunning;
+            databaseError = null;
+            try
+            {
+                if (bot.IsBotRunning) { bot.Stop(); return; }
+                long ownId = 0;
+                if (!string.IsNullOrWhiteSpace(ownIdInput.Text) && (!long.TryParse(ownIdInput.Text, out ownId) || ownId <= 0))
+                    throw new InvalidOperationException("본인 작성자 ID는 양의 정수로 입력하거나 비워 주세요.");
+                bot.OwnAuthorId = ownId;
+                bot.TargetWindow = textBox1.Text.Trim();
+                Settings.Instance.ChatOwnAuthorId = ownId;
+                Settings.Instance.ChatSendRoomName = bot.TargetWindow;
+                Settings.Save(Settings.Instance);
+                bot.Start();
+            }
+            catch (Exception ex) { databaseError = ex.Message; databaseStatus.Text = ex.Message; }
         }
 
         private void listView1_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (listView1.SelectedItems.Count == 0) return;
 
-            string roomName = listView1.SelectedItems[0].SubItems[0].Text;
-            textBox1.Text = roomName;
-            bot.TargetWindow = roomName;
-            voiceRoomBot.TargetWindow = roomName;
+            var room = listView1.SelectedItems[0].Tag as ChatRoomInfo;
+            if (room == null || bot.IsBotRunning || bot.IsReceiverStopping) return;
+            databaseError = null;
+            bool restored = Settings.Instance.ChatAccountPath == room.AccountPath && Settings.Instance.ChatRoomId == room.ChatId;
+            if (Settings.Instance.ChatAccountPath != room.AccountPath)
+            {
+                ownIdInput.Text = "";
+                Settings.Instance.ChatOwnAuthorId = 0;
+            }
+            bot.SelectRoom(room);
+            textBox1.Text = restored && !string.IsNullOrWhiteSpace(Settings.Instance.ChatSendRoomName) ? Settings.Instance.ChatSendRoomName : room.Name;
+            Settings.Instance.ChatAccountPath = room.AccountPath;
+            Settings.Instance.ChatRoomId = room.ChatId;
+            databaseStatus.Text = room.Name + " · 방 " + room.ChatId + " · " + Path.GetFileName(room.AccountPath);
         }
 
         private void button3_Click(object sender, EventArgs e)
         {
             //SendTextToChatroom(textBox1.Text, $"앙 기모띠");
-            UpdateWindowList();
+            RefreshRoomCatalog();
         }
 
 
@@ -239,7 +387,7 @@ namespace KakaotalkBot
             if (bot.IsBotRunning && string.IsNullOrEmpty(bot.TargetWindow) == false)
             {
                 WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, $"o");
-                bot.IsBotRunning = false;
+                // 채팅창 재열기는 DB 수신기의 중지 사유가 아닙니다.
                 //Thread.Sleep(5000);
                 WindowsMacro.Instance.CloseChatRoom(bot.TargetWindow);
                 Thread.Sleep(3000);
@@ -247,7 +395,7 @@ namespace KakaotalkBot
 
                 WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
                 //Thread.Sleep(5000);
-                //bot.UpdateWindowList();
+                //bot.RefreshRoomCatalog();
                 //bot.IsBotRunning = true;
                 //WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, $"[시스템] 코몽봇 껐켰 테스트 종료");
             }
