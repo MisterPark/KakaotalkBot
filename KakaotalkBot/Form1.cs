@@ -385,18 +385,13 @@ namespace KakaotalkBot
         {
             if (bot.IsBotRunning && string.IsNullOrEmpty(bot.TargetWindow) == false)
             {
-                WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, $"o");
-                // 채팅창 재열기는 DB 수신기의 중지 사유가 아닙니다.
-                //Thread.Sleep(5000);
-                WindowsMacro.Instance.CloseChatRoom(bot.TargetWindow);
-                Thread.Sleep(3000);
-
-
-                WindowsMacro.Instance.OpenChatRoom(bot.TargetWindow);
-                //Thread.Sleep(5000);
-                //bot.RefreshRoomCatalog();
-                //bot.IsBotRunning = true;
-                //WindowsMacro.Instance.SendTextToChatroom(bot.TargetWindow, $"[시스템] 코몽봇 껐켰 테스트 종료");
+                string room = bot.TargetWindow;
+                StaInputWorker.Instance.Invoke(() =>
+                {
+                    WindowsMacro.Instance.CloseChatRoom(room);
+                    Thread.Sleep(3000);
+                    WindowsMacro.Instance.OpenChatRoom(room);
+                });
             }
 
         }
@@ -425,13 +420,15 @@ namespace KakaotalkBot
 
                 ScreenPixelDetector.Instance.AddListener(() =>
                 {
-                    WindowsMacro.Instance.SetCursor(x, y);
-                    WindowsMacro.Instance.ClickLeft();
-                    Thread.Sleep(50);
-                    WindowsMacro.Instance.ClickLeft();
-                    Thread.Sleep(50);
-
-                    
+                    StaInputWorker.Instance.Invoke(() =>
+                    {
+                        if (!ScreenPixelDetector.Instance.IsRunning) return;
+                        WindowsMacro.Instance.SetCursor(x, y);
+                        WindowsMacro.Instance.ClickLeft();
+                        Thread.Sleep(50);
+                        WindowsMacro.Instance.ClickLeft();
+                        Thread.Sleep(50);
+                    });
                 });
 
                 ScreenPixelDetector.Instance.Start(x, y);

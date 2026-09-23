@@ -66,6 +66,7 @@ namespace KakaotalkBot
         public void Update()
         {
             if (IsBotRunning == false) return;
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(Update); return; }
 
 
             if (autoClickTimer.Check(Time.DeltaTime))

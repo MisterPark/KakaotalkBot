@@ -152,27 +152,32 @@ namespace KakaotalkBot
 
         public void ClickLeft()
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => ClickLeft()); return; }
             mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
             mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
         }
         public void ClickRight()
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => ClickRight()); return; }
             mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, UIntPtr.Zero);
             mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, UIntPtr.Zero);
         }
         public void SendReturn()
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => SendReturn()); return; }
             SendKeys.SendWait("~"); // ^ == Ctrl
         }
 
         public void SendCtrlKey(IntPtr hwnd, char key)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => SendCtrlKey(hwnd, key)); return; }
             SetForegroundWindow(hwnd);
             SendKeys.SendWait("^" + key); // ^ == Ctrl
         }
 
         public void SendInput(ushort virtualKey)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => SendInput(virtualKey)); return; }
             INPUT[] inputs = new INPUT[2];
 
             inputs[0] = new INPUT
@@ -196,6 +201,7 @@ namespace KakaotalkBot
 
         public static void Paste(string text)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => Paste(text)); return; }
             Clipboard.SetText(text);
 
             var inputs = new[]
@@ -227,6 +233,7 @@ namespace KakaotalkBot
 
         public static void SendText(string text)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => SendText(text)); return; }
             Clipboard.SetText(text);
 
             KeyDown((byte)VK_CONTROL);
@@ -238,6 +245,7 @@ namespace KakaotalkBot
 
         public static void CloseWindow(IntPtr hwnd)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => CloseWindow(hwnd)); return; }
             if (hwnd != IntPtr.Zero)
             {
                 PostMessage(hwnd, WM_CLOSE, 0, 0);
@@ -370,6 +378,7 @@ namespace KakaotalkBot
 
         public void OpenChatRoom(string roomName)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => OpenChatRoom(roomName)); return; }
             // 1. 카카오톡 메인 창 찾기
             bool alreadyOpen = false;
             IntPtr hwndKakao = FindWindow(null, "카카오톡");
@@ -383,10 +392,13 @@ namespace KakaotalkBot
                 alreadyOpen = true;
             }
 
+            var opening = Stopwatch.StartNew();
             while (FindWindow(null, "카카오톡") == IntPtr.Zero)
             {
-                Thread.Sleep(1000);
+                if (opening.ElapsedMilliseconds >= 15000) throw new TimeoutException("카카오톡 메인 창을 찾지 못했습니다.");
+                Thread.Sleep(100);
             }
+            hwndKakao = FindWindow(null, "카카오톡");
 
             if (alreadyOpen == false)
             {
@@ -437,6 +449,7 @@ namespace KakaotalkBot
 
         public void CloseWindow(string windowName)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => CloseWindow(windowName)); return; }
             IntPtr hWnd = FindWindow(null, windowName);
 
             if (hWnd != IntPtr.Zero)
@@ -447,6 +460,7 @@ namespace KakaotalkBot
 
         public void CloseChatRoom(string roomName)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => CloseChatRoom(roomName)); return; }
             IntPtr hwndMain = FindWindow(null, roomName);
             if (hwndMain != IntPtr.Zero)
             {
@@ -460,6 +474,7 @@ namespace KakaotalkBot
 
         public void CloseChatRoom(IntPtr room)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => CloseChatRoom(room)); return; }
             if (room != IntPtr.Zero)
             {
                 Point roomPos = GetWindowPos(room);
@@ -471,6 +486,7 @@ namespace KakaotalkBot
 
         public string CopyChatroomText(IntPtr hwndMain)
         {
+            if (!StaInputWorker.Instance.IsCurrent) return StaInputWorker.Instance.Invoke(() => CopyChatroomText(hwndMain));
             IntPtr hwndList = FindWindowEx(hwndMain, IntPtr.Zero, "EVA_VH_ListControl_Dblclk", null);
 
             if (hwndList == IntPtr.Zero)
@@ -498,28 +514,21 @@ namespace KakaotalkBot
             return text;
         }
 
-        private int chatSendInProgress;
-        private readonly Queue<Action> chatSendQueue = new Queue<Action>();
         private void RunChatSend(Action action)
-        {
-            lock (chatSendQueue)
-            {
-                chatSendQueue.Enqueue(action);
-                if (chatSendInProgress != 0) return;
-                chatSendInProgress = 1;
-                try { while (chatSendQueue.Count > 0) chatSendQueue.Dequeue()(); }
-                catch { chatSendQueue.Clear(); throw; }
-                finally { chatSendInProgress = 0; }
-            }
-        }
+        { StaInputWorker.Instance.Invoke(action); }
 
         internal void SendOperatorNotice(string room, int pid, string text)
-        { RunChatSend(() => new NativeMentionInput(room, pid).SendPlain(Database.Instance.ForChat(text))); }
+        {
+            string body = Database.Instance.ForChat(text);
+            RunChatSend(() => new NativeMentionInput(room, pid).SendPlain(body));
+        }
 
         /// <summary>닉네임으로 개인 멘션 객체를 만들고 ID로 대상을 지정하여 본문과 한 번에 전송한다.</summary>
         public void SendMentionToChatroom(string chatroomName, long userId, string candidateNickname, string message, int expectedProcessId = 0, IEnumerable<string> fallbackNicknames = null)
         {
-            RunChatSend(() => new KakaoMentionSender(chatroomName, expectedProcessId).Send(userId, candidateNickname, Database.Instance.ForChat(message), fallbackNicknames));
+            string body = Database.Instance.ForChat(message);
+            var candidates = fallbackNicknames == null ? null : new List<string>(fallbackNicknames);
+            RunChatSend(() => new KakaoMentionSender(chatroomName, expectedProcessId).Send(userId, candidateNickname, body, candidates));
         }
 
         public void SendTextToChatroom(string chatroomName, string message)
@@ -587,6 +596,7 @@ namespace KakaotalkBot
 
         public void SetCursor(int x, int y)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => SetCursor(x, y)); return; }
             SetCursorPos(x, y);
         }
 
@@ -620,6 +630,7 @@ namespace KakaotalkBot
 
         public void SetForeground(IntPtr hwnd)
         {
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => SetForeground(hwnd)); return; }
             SetForegroundWindow(hwnd);
         }
     }

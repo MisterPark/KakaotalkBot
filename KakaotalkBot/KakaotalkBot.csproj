@@ -144,6 +144,7 @@
     <Compile Include="VoiceRoomBot.cs" />
     <Compile Include="WindowInfo.cs" />
     <Compile Include="WindowsMacro.cs" />
+    <Compile Include="StaInputWorker.cs" />
     <EmbeddedResource Include="Form1.resx">
       <DependentUpon>Form1.cs</DependentUpon>
     </EmbeddedResource>

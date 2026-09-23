@@ -101,6 +101,8 @@ namespace KakaotalkBot
                     System.Threading.Thread.Sleep(0);
                 }
             }
+            if (ScreenPixelDetector.Instance.IsRunning) ScreenPixelDetector.Instance.Stop();
+            StaInputWorker.Instance.Complete();
         }
 
         [StructLayout(LayoutKind.Sequential)]
