@@ -259,7 +259,10 @@ namespace KakaotalkBot
                 {
                     for (ulong offset = 0; offset < size; offset += 1024 * 1024)
                     {
-                        if (scanned >= 1024UL * 1024 * 1024 || clock.ElapsedMilliseconds > 20000) throw new IOException("멘션 객체 검색 한도를 초과했습니다.");
+                        if (scanned >= 1024UL * 1024 * 1024 || clock.ElapsedMilliseconds > 20000)
+                            throw new IOException("멘션 객체 검색 " + (scanned >= 1024UL * 1024 * 1024 ? "용량" : "시간") +
+                                " 한도 초과: " + (scanned / (1024 * 1024)) + " MiB, " + clock.ElapsedMilliseconds +
+                                " ms, 확인 " + objects.Count + "/" + positions.Count + "개. 전송하지 않았습니다.");
                         int length = (int)Math.Min(1024UL * 1024 + 7, size - offset);
                         byte[] bytes = Bytes(context, start + offset, length);
                         scanned += (ulong)length;
@@ -273,7 +276,13 @@ namespace KakaotalkBot
                             if (candidate % 8 == 0 && BitConverter.ToUInt64(bytes, index) == context.Vtable && found.Add(candidate))
                             {
                                 var mention = ReadObject(context, candidate);
-                                if (mention != null && positions.Contains(mention.Position)) objects.Add(mention);
+                                if (mention != null && positions.Contains(mention.Position))
+                                {
+                                    objects.Add(mention);
+                                    // 현재 입력창 소유의 객체가 TOM 위치와 모두 일치하면 전체 메모리 검색을 끝냅니다.
+                                    // 호출부에서 문서와 객체를 다시 읽어 검색 도중 변경 여부를 검증합니다.
+                                    if (PositionsMatch(positions, objects)) return;
+                                }
                             }
                             index++;
                         }
