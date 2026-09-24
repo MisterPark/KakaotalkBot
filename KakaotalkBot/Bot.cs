@@ -313,6 +313,15 @@ namespace KakaotalkBot
             }
         }
 
+        // 명령어 목록과 같이 제목 다음에 폭 없는 공백을 넣어 긴 메시지 접힘을 유도합니다.
+        internal static string FoldChatOutput(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            int titleEnd = text.IndexOf('\n');
+            if (titleEnd < 0) return text;
+            return text.Insert(titleEnd + 1, new string('\u200B', 500) + "\n");
+        }
+
         private void ProcessCommand()
         {
             if (commands.Count == 0) return;
@@ -388,7 +397,7 @@ namespace KakaotalkBot
             {
                 if (command.Keyword.Trim() != "/레벨랭킹")
                 { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "형식: /레벨랭킹 (현재 누적 경험치 기준)"); return; }
-                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, Database.Instance.LevelRanking(command.ChatId));
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, FoldChatOutput(Database.Instance.LevelRanking(command.ChatId)));
                 return;
             }
             if (operation == "/통계" || operation == "/월간랭킹" || operation == "/채팅랭킹" || operation == "/랭킹")
@@ -399,7 +408,7 @@ namespace KakaotalkBot
                 if (!DateTime.TryParseExact(month, "yyyy-MM", System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.None, out parsed))
                 { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "형식: " + operation + " [YYYY-MM]"); return; }
-                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, operation == "/통계" ? Database.Instance.RoomStatistics(command.ChatId, month) : Database.Instance.Operations.Ranking(command.ChatId, month, operation == "/랭킹"));
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, operation == "/통계" ? Database.Instance.RoomStatistics(command.ChatId, month) : FoldChatOutput(Database.Instance.Operations.Ranking(command.ChatId, month, operation == "/랭킹")));
                 return;
             }
 
@@ -487,7 +496,7 @@ namespace KakaotalkBot
                 var user = Database.Instance.GetOrAddUser(targetId, targetNickname);
                 int total = Database.Instance.GetTotalContribution();
                 float contribution = total == 0 ? 0 : user.Contribution * 100f / total;
-                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"=====[유저조회]=====\n닉네임: {Database.Instance.ChatUserName(command.ChatId, targetId, targetNickname)}\n칭호: {Database.Instance.NamedTitleDetails(command.ChatId, targetId)}\n레벨: {user.Level}\n경험치: {user.Experience} (다음 레벨 누적 {user.NextLevelExperience})\n{Database.Instance.PersonalRankings(command.ChatId, targetId, OperationsStore.Month(DateTimeOffset.UtcNow.ToUnixTimeSeconds()))}\n포인트: {user.Point}\n인기도: {user.Popularity}\n채팅 기여도: {contribution:F2}%\n퇴장 횟수: {user.LeaveCount}\n강퇴 횟수: {user.KickCount}\n{Database.Instance.DescribeActivity(command.ChatId, targetId)}\n=================");
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, FoldChatOutput($"=====[유저조회]=====\n닉네임: {Database.Instance.ChatUserName(command.ChatId, targetId, targetNickname)}\n칭호: {Database.Instance.NamedTitleDetails(command.ChatId, targetId)}\n레벨: {user.Level}\n경험치: {user.Experience} (다음 레벨 누적 {user.NextLevelExperience})\n{Database.Instance.PersonalRankings(command.ChatId, targetId, OperationsStore.Month(DateTimeOffset.UtcNow.ToUnixTimeSeconds()))}\n포인트: {user.Point}\n인기도: {user.Popularity}\n채팅 기여도: {contribution:F2}%\n퇴장 횟수: {user.LeaveCount}\n강퇴 횟수: {user.KickCount}\n{Database.Instance.DescribeActivity(command.ChatId, targetId)}\n================="));
             }
             else if (command.Keyword.StartsWith("/랭킹"))
             {
