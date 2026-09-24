@@ -73,6 +73,19 @@ namespace KakaotalkBot
                     a.UserId == b.UserId && a.DisplayText == b.DisplayText).All(value => value);
         }
 
+        // 재열기 전에는 메모리를 검색하지 않고 입력 문서만 검사합니다.
+        internal static IntPtr EmptyInputWindow(string roomTitle, int expectedPid)
+        {
+            lock (Gate)
+            using (var context = Open(roomTitle, false))
+            {
+                if (context.Pid != expectedPid) throw new InvalidOperationException("선택한 계정의 채팅창이 아닙니다.");
+                var document = ReadDocument(context.Input);
+                return document.Positions.Count == 0 && (document.Text == "\r" || document.IsPlaceholder)
+                    ? context.Input : IntPtr.Zero;
+            }
+        }
+
         public static InputMentionSnapshot Read(string roomTitle)
         {
             lock (Gate)

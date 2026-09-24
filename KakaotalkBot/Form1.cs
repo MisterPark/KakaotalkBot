@@ -120,6 +120,7 @@ namespace KakaotalkBot
             button2.Text = bot.IsBotRunning ? "DB 수신 중지" : bot.IsReceiverStopping ? "수신 종료 중…" : "DB 수신 시작";
             if (bot.HasReceiver && catalogTask == null) databaseStatus.Text = bot.ReceiveStatus;
             if (databaseError != null) databaseStatus.Text = databaseError;
+            if (bot.RoomRecycleStatus != null) databaseStatus.Text = bot.RoomRecycleStatus;
             if (bot.LastSendError != null) databaseStatus.Text = bot.LastSendError;
             if (bot.LastProcessingError != null) databaseStatus.Text = bot.LastProcessingError;
             if (bot.IsBotRunning)
@@ -140,7 +141,7 @@ namespace KakaotalkBot
                 button1.BackColor = Color.Red;
             }
 
-            label3.Text = lastBotResetTime.ToString("HH:mm:ss");
+            label3.Text = (bot.LastRoomRecycle == DateTime.MinValue ? lastBotResetTime : bot.LastRoomRecycle).ToString("HH:mm:ss");
             label4.Text = DateTime.Now.ToString("HH:mm:ss");
 
             Point p = WindowsMacro.Instance.GetCursorPos();

@@ -48,6 +48,9 @@ namespace KakaotalkBot
         private List<string> chatLog = new List<string>();
         private ChatDatabaseReceiver receiver;
         private DateTime nextOpenAttempt;
+        private DateTime nextRoomRecycle;
+        public DateTime LastRoomRecycle { get; private set; }
+        public string RoomRecycleStatus { get; private set; }
         private bool updating;
         private DateTime nextProcessingAttempt;
         private bool departureSavePending;
@@ -138,6 +141,7 @@ namespace KakaotalkBot
             ProcessDatabaseMessages();
             ProcessCommand();
             if (!IsBotRunning) return;
+            MaintainChatWindow(DateTime.UtcNow, () => WindowsMacro.Instance.RecycleChatRoom(TargetWindow, SelectedRoom.ProcessId));
             ProcessReset();
 
             if (soliloquyTimer.Check(Time.DeltaTime))
@@ -177,6 +181,8 @@ namespace KakaotalkBot
             LastProcessingError = null;
             receiver.Start();
             isBotRunning = true;
+            nextRoomRecycle = DateTime.UtcNow.AddHours(4);
+            RoomRecycleStatus = null;
         }
 
         public void Stop()
@@ -640,6 +646,29 @@ namespace KakaotalkBot
             else
             {
                 WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"{answer}");
+            }
+        }
+
+        // 수신기와 명령 큐를 유지하고 전송 작업 사이에서 채팅창만 재열기합니다.
+        internal void MaintainChatWindow(DateTime now, Func<bool> recycle)
+        {
+            if (!IsBotRunning || !StaticVariable.AutoReboot || SelectedRoom == null ||
+                string.IsNullOrWhiteSpace(TargetWindow) || commands.Count != 0 || now < nextRoomRecycle) return;
+            nextRoomRecycle = now.AddMinutes(1);
+            try
+            {
+                if (!recycle())
+                {
+                    RoomRecycleStatus = "채팅창 재열기 대기 · 작성 중인 내용 보존";
+                    return;
+                }
+                LastRoomRecycle = now.ToLocalTime();
+                nextRoomRecycle = now.AddHours(4);
+                RoomRecycleStatus = null;
+            }
+            catch (Exception error)
+            {
+                RoomRecycleStatus = "채팅창 재열기 실패 · DB 수신 유지: " + error.GetBaseException().Message;
             }
         }
 

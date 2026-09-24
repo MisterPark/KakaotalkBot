@@ -376,6 +376,42 @@ namespace KakaotalkBot
             return false;
         }
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+        [DllImport("user32.dll")]
+        private static extern bool IsWindow(IntPtr window);
+
+        internal bool RecycleChatRoom(string roomName, int expectedPid)
+        {
+            return StaInputWorker.Instance.Invoke(() =>
+            {
+                if (IsChatRoomOpen(roomName))
+                {
+                    IntPtr input = KakaoInputMentions.EmptyInputWindow(roomName, expectedPid);
+                    if (input == IntPtr.Zero) return false;
+                    IntPtr room = GetAncestor(input, 2);
+                    if (room == IntPtr.Zero) throw new InvalidOperationException("채팅창을 확인하지 못했습니다.");
+                    CloseWindow(room);
+                    var closing = Stopwatch.StartNew();
+                    while (IsWindow(room))
+                    {
+                        if (closing.ElapsedMilliseconds >= 3000) throw new TimeoutException("채팅창 닫기 시간 초과");
+                        Thread.Sleep(50);
+                    }
+                }
+                OpenChatRoom(roomName);
+                var opening = Stopwatch.StartNew();
+                while (!IsChatRoomOpen(roomName))
+                {
+                    if (opening.ElapsedMilliseconds >= 3000) throw new TimeoutException("채팅창 재열기 시간 초과");
+                    Thread.Sleep(50);
+                }
+                // 이름이 같은 다른 계정 창으로 연결되지 않았는지도 다시 검사합니다.
+                KakaoInputMentions.EmptyInputWindow(roomName, expectedPid);
+                return true;
+            });
+        }
+
         public void OpenChatRoom(string roomName)
         {
             if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => OpenChatRoom(roomName)); return; }
@@ -438,12 +474,6 @@ namespace KakaotalkBot
 
             Thread.Sleep(1000);
 
-            CloseChatRoom(roomName);
-
-            SetCursorPos(p.X + 195, p.Y + 120);
-            ClickLeft();
-            Thread.Sleep(50);
-            ClickLeft();
 
         }
 

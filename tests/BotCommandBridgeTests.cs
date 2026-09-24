@@ -137,6 +137,38 @@ internal static class BotCommandBridgeTests
             if (commands.Count != queuedBeforeOwn || answers.Count != answersBeforeOwn || ownUser.Experience != 0 || ownUser.Contribution != 0 ||
                 !Database.Instance.PersonalRankings(10, 8200, "2030-03").Contains("순위 없음 (0회)"))
                 throw new Exception("봇 출력이 명령·퀴즈·보상으로 재처리됨");
+            // 실제 창 조작 없이 주기, 초안 보호, 실패 후 재시도와 수신 상태 유지를 검증합니다.
+            var maintain = typeof(Bot).GetMethod("MaintainChatWindow", BindingFlags.Instance | BindingFlags.NonPublic);
+            DateTime now = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+            Set(bot, "isBotRunning", true);
+            Set(bot, "targetWindow", "검증방");
+            Set(bot, "nextRoomRecycle", now.AddHours(4));
+            bool previousAuto = StaticVariable.AutoReboot;
+            StaticVariable.AutoReboot = true;
+            int recycled = 0;
+            Func<bool> recycle = () => { recycled++; return true; };
+            maintain.Invoke(bot, new object[] { now.AddHours(5), recycle });
+            if (recycled != 0 || commands.Count != queuedBeforeOwn) throw new Exception("명령 대기 중 재열기 또는 큐 손실");
+            commands.Clear();
+            maintain.Invoke(bot, new object[] { now.AddHours(3), recycle });
+            if (recycled != 0) throw new Exception("4시간 이전 재열기");
+            StaticVariable.AutoReboot = false;
+            maintain.Invoke(bot, new object[] { now.AddHours(4), recycle });
+            if (recycled != 0) throw new Exception("자동 재열기 해제 무시");
+            StaticVariable.AutoReboot = true;
+            maintain.Invoke(bot, new object[] { now.AddHours(4), new Func<bool>(() => false) });
+            if (bot.RoomRecycleStatus == null || bot.LastRoomRecycle != DateTime.MinValue) throw new Exception("초안 대기 처리 실패");
+            maintain.Invoke(bot, new object[] { now.AddHours(4).AddSeconds(30), recycle });
+            if (recycled != 0) throw new Exception("초안 대기 재시도 간격 오류");
+            maintain.Invoke(bot, new object[] { now.AddHours(4).AddMinutes(1), new Func<bool>(() => { throw new Exception("시험"); }) });
+            if (!bot.IsBotRunning || !bot.RoomRecycleStatus.Contains("시험")) throw new Exception("재열기 실패 시 수신 유지 실패");
+            maintain.Invoke(bot, new object[] { now.AddHours(4).AddMinutes(2), recycle });
+            if (recycled != 1 || !bot.IsBotRunning || bot.RoomRecycleStatus != null || answers.Count != answersBeforeOwn)
+                throw new Exception("재열기 성공 후 상태 유지 실패");
+            maintain.Invoke(bot, new object[] { now.AddHours(8).AddMinutes(1), recycle });
+            if (recycled != 1) throw new Exception("성공 후 4시간 주기 오류");
+            StaticVariable.AutoReboot = previousAuto;
+            Console.WriteLine("PASS: periodic room recycle, draft deferral, retry, queue and receiver state preserved (no native input)");
             Console.WriteLine("PASS: Bot command queue, mention IDs, quiz, contribution, room isolation (no sends)");
             return 0;
         }
