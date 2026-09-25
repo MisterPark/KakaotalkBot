@@ -68,7 +68,8 @@ namespace KakaotalkBot
 
                     bot.Update();
                     //voiceRoomBot.Update();
-                    System.Threading.Thread.Sleep(0);
+                    // 입력·수신은 별도 작업자에서 실행하므로 유휴 루프의 과도한 할당을 제한합니다.
+                    System.Threading.Thread.Sleep(10);
                 }
             }
             if (ScreenPixelDetector.Instance.IsRunning) ScreenPixelDetector.Instance.Stop();

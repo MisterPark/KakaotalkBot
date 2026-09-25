@@ -31,11 +31,15 @@ namespace KakaotalkBot
         {
             // 같은 작업 안의 입력 함수 호출은 큐에 다시 넣지 않습니다.
             if (IsCurrent) return action();
+            long queuedAt = System.Diagnostics.Stopwatch.GetTimestamp();
             var result = new TaskCompletionSource<T>();
             Action work = () =>
             {
+                long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                DelayDiagnostics.Record("input-queue", queuedAt);
                 try { result.SetResult(action()); }
                 catch (Exception error) { result.SetException(error); }
+                finally { DelayDiagnostics.Record("input-action", started); }
             };
             if (!queue.TryAdd(work)) throw new InvalidOperationException("입력 작업이 너무 많이 대기 중입니다.");
             return result.Task.GetAwaiter().GetResult();
@@ -56,6 +60,28 @@ namespace KakaotalkBot
         {
             // 이미 접수한 작업은 완료하고 새 작업은 받지 않습니다.
             queue.CompleteAdding();
+        }
+    }
+    // 개인정보 없이 느린 작업의 종류와 소요 시간만 남깁니다.
+    internal static class DelayDiagnostics
+    {
+        private static readonly object Gate = new object();
+        internal static void Record(string stage, long started)
+        {
+            double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - started) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (ms < 500) return;
+            try
+            {
+                lock (Gate)
+                {
+                    string path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "command-delay.log");
+                    if (System.IO.File.Exists(path) && new System.IO.FileInfo(path).Length > 1024 * 1024)
+                        System.IO.File.WriteAllText(path, "");
+                    System.IO.File.AppendAllText(path, DateTimeOffset.Now.ToString("O") + " " + stage + " " + ms.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + "ms\r\n");
+                }
+            }
+            catch (System.IO.IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 }

@@ -18,6 +18,8 @@ namespace KakaotalkBot
         private readonly KakaoTalkDecryptor decryptor;
         private readonly KakaoTalkDecryptor.DecryptionKey key;
         private readonly Dictionary<int, byte[]> hashes = new Dictionary<int, byte[]>();
+        // 수신 세션은 순차 실행됩니다. 큰 사본 버퍼는 세션 내에서 재사용합니다.
+        private byte[] copyBuffer;
         private byte[] walHeader;
         private uint lastFrame, checksum1, checksum2;
         private string baseStamp;
@@ -260,7 +262,8 @@ namespace KakaotalkBot
                         var watch = Stopwatch.StartNew();
                         using (var copy = new FileStream(result.BaseCopy, FileMode.Create, FileAccess.Write))
                         {
-                            byte[] buffer = new byte[1024 * 1024];
+                            if (copyBuffer == null) copyBuffer = new byte[1024 * 1024];
+                            byte[] buffer = copyBuffer;
                             int count;
                             while ((count = source.Read(buffer, 0, buffer.Length)) != 0)
                             {

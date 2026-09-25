@@ -68,7 +68,9 @@ namespace KakaotalkBot
                 .GroupBy(r => new { r.ChatId, r.Kind }))
             {
                 var candidates = group.ToArray();
-                foreach (var winner in candidates.Where(r => candidates.Count(other => other.Count > r.Count) < 3))
+                // 세 번째로 높은 점수 이상을 선택하면 기존 공동 3위 규칙을 유지합니다.
+                long cutoff = candidates.Select(r => r.Count).OrderByDescending(value => value).Take(3).Last();
+                foreach (var winner in candidates.Where(r => r.Count >= cutoff))
                 {
                     string key = "monthly:" + current + ":" + winner.ChatId + ":" + winner.Kind + ":" + winner.UserId;
                     if (Rows.ContainsKey(key)) continue;

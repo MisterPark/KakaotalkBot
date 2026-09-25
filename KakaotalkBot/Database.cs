@@ -27,6 +27,49 @@ namespace KakaotalkBot
         }
 
         private GoogleSheetHelper keywordSheet;
+        private GoogleSheetHelper contentReader;
+        private System.Threading.Tasks.Task<ContentRefresh> contentRefresh;
+        private ContentRefresh pendingContent;
+        public string ContentRefreshError { get; private set; }
+        private sealed class ContentRefresh
+        {
+            internal GoogleSheetHelper Reader;
+            internal List<List<string>> Commands;
+            internal List<Quiz> Quizzes;
+            internal List<Topic> Topics;
+        }
+
+        internal void BeginContentRefresh()
+        {
+            if (contentReader == null || contentRefresh != null) return;
+            var reader = contentReader;
+            contentRefresh = System.Threading.Tasks.Task.Run(() =>
+            {
+                var result = new ContentRefresh { Reader = reader, Commands = reader.ReadCommandTables() };
+                result.Quizzes = reader.ReadAllFromSheet("상식퀴즈").Skip(1).Select(Quiz.ToCommonSense).ToList();
+                result.Topics = reader.ReadAllFromSheet("Topic").Skip(1).Select(Topic.ToTopic).ToList();
+                if (result.Quizzes.Count == 0 || result.Topics.Count == 0) throw new InvalidOperationException("퀴즈·주제 갱신 결과가 비어 있어 기존 내용을 유지합니다.");
+                return result;
+            });
+        }
+
+        internal void ApplyContentRefresh()
+        {
+            if (contentRefresh != null && contentRefresh.IsCompleted)
+            {
+                var completed = contentRefresh; contentRefresh = null;
+                if (completed.IsFaulted) ContentRefreshError = "콘텐츠 갱신 실패: " + completed.Exception.GetBaseException().Message;
+                else if (!completed.IsCanceled && completed.Result.Reader == contentReader)
+                {
+                    var result = completed.Result;
+                    commands = result.Commands; keywords = GetKeywords(); topics = result.Topics;
+                    pendingContent = result; ContentRefreshError = null;
+                }
+            }
+            // 진행 중인 퀴즈의 인덱스가 다른 문제를 가리키지 않도록 종료 후 교체합니다.
+            if (pendingContent != null && currentAnswerIndex < 0)
+            { commonSenses = pendingContent.Quizzes; pendingContent = null; }
+        }
         private List<string> keywords = new List<string>();
         private List<List<string>> commands = new List<List<string>>();
         private List<User> userTable = new List<User>();
@@ -34,6 +77,7 @@ namespace KakaotalkBot
         internal RoomOperatorStore Operators = new RoomOperatorStore();
         internal OperationsStore Operations = new OperationsStore();
         internal RoomTitleStore Titles = new RoomTitleStore();
+        private long lastMonthMaintenanceSecond = -1;
         internal DailyQuestStore Quests = new DailyQuestStore();
         public bool HasPendingActivity { get { return activity.Dirty || Operators.Dirty || Operations.Dirty || Titles.Dirty || Quests.Dirty; } }
         internal void ConfirmActivitySaved() { activity.MarkSaved(); Operators.Dirty = false; Operations.Dirty = false; Operations.ResetPending = false; Titles.Dirty = false; Quests.Dirty = false; }
@@ -82,8 +126,11 @@ namespace KakaotalkBot
         public void Initialize(string applicationName, string spreadsheetId)
         {
             UserStorageReady = false;
+            lastMonthMaintenanceSecond = -1;
             random = RandomNumberGenerator.Create();
             keywordSheet = new GoogleSheetHelper(applicationName, spreadsheetId);
+            contentReader = new GoogleSheetHelper(applicationName, spreadsheetId);
+            pendingContent = null;
             commands = GetCommanads();
             keywords = GetKeywords();
             try
@@ -133,12 +180,14 @@ namespace KakaotalkBot
         public void UpdateUserTable()
         {
             if (!UserStorageReady) throw new InvalidOperationException("사용자 DB를 정상적으로 읽기 전에는 저장할 수 없습니다.");
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
                 keywordSheet.WriteUserData(userTable.Select(user => user.ToRow()).ToList(), activity, Operators, Operations, Titles, Quests);
                 UserStorageError = null;
             }
             catch (Exception error) { UserStorageError = "사용자 DB 저장 실패: " + error.Message; throw; }
+            finally { DelayDiagnostics.Record("sheet-save", started); }
         }
 
         public void UpdateCommonSenses()
@@ -274,8 +323,9 @@ namespace KakaotalkBot
             // 일반 채팅과 답글에만 경험치를 지급합니다. 명령어·시스템 이벤트는 제외합니다.
             if (!message.IsOwn && !string.IsNullOrWhiteSpace(message.Message) && !message.Message.TrimStart().StartsWith("/"))
                 activity.AwardExperience(user, message.ChatId, message.LogId, message.SendAt);
-            bool questChanged = Quests.CountChat(user, message, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            return renamed || questChanged;
+            int previousPoints = user.Point;
+            Quests.CountChat(user, message, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            return renamed || user.Point != previousPoints;
         }
 
         internal void ObserveRoster(ChatRosterSnapshot roster)
@@ -305,9 +355,13 @@ namespace KakaotalkBot
         {
             if (!UserStorageReady) return;
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            // 날짜 경계는 초 단위로 확인합니다. 같은 초의 반복 루프에서는 문자열·집계 배열을 만들지 않습니다.
+            if (now == lastMonthMaintenanceSecond) return;
             bool reset = Operations.AdvanceMonth(userTable, now);
             Titles.AwardMonthly(Operations, now);
             if (reset || Titles.Dirty) UpdateUserTable();
+            // 저장 실패 시에는 검사 완료로 표시하지 않아 다음 처리에서 재시도합니다.
+            lastMonthMaintenanceSecond = now;
         }
 
         public void AddOperatorMemo(long chat, long author, long target, string text, long log = 0)

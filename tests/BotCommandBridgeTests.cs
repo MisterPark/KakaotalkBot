@@ -175,6 +175,34 @@ internal static class BotCommandBridgeTests
                 throw new Exception("퀘스트 조회·출석 별칭 수신 연결 오류");
             StaticVariable.AutoReboot = previousAuto;
             Console.WriteLine("PASS: periodic room recycle, draft deferral, retry, queue and receiver state preserved (no native input)");
+            var dbType = typeof(Database);
+            var refreshType = dbType.GetNestedType("ContentRefresh", BindingFlags.NonPublic);
+            var snapshot = Activator.CreateInstance(refreshType, true);
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var incomingQuizzes = new List<Quiz> { new Quiz { Question = "새 문제" } };
+            refreshType.GetField("Commands", flags).SetValue(snapshot, new List<List<string>> { new List<string> { "/갱신시험", "새 응답" } });
+            refreshType.GetField("Quizzes", flags).SetValue(snapshot, incomingQuizzes);
+            refreshType.GetField("Topics", flags).SetValue(snapshot, new List<Topic> { new Topic { Title = "새 주제" } });
+            var sourceType = typeof(System.Threading.Tasks.TaskCompletionSource<>).MakeGenericType(refreshType);
+            var source = Activator.CreateInstance(sourceType);
+            sourceType.GetMethod("SetResult").Invoke(source, new[] { snapshot });
+            dbType.GetField("contentRefresh", flags).SetValue(Database.Instance, sourceType.GetProperty("Task").GetValue(source, null));
+            var oldQuizzes = Database.Instance.CommonSenses;
+            Database.Instance.CurrentAnswerIndex = 0;
+            var apply = dbType.GetMethod("ApplyContentRefresh", flags);
+            apply.Invoke(Database.Instance, null);
+            if (!Database.Instance.Keywords.Contains("/갱신시험") || !object.ReferenceEquals(oldQuizzes, Database.Instance.CommonSenses))
+                throw new Exception("진행 중 퀴즈 보호 또는 명령 갱신 오류");
+            Database.Instance.CurrentAnswerIndex = -1;
+            apply.Invoke(Database.Instance, null);
+            if (!object.ReferenceEquals(incomingQuizzes, Database.Instance.CommonSenses)) throw new Exception("퀴즈 종료 후 갱신 누락");
+            var failure = Activator.CreateInstance(sourceType);
+            sourceType.GetMethod("SetException", new[] { typeof(Exception) }).Invoke(failure, new object[] { new Exception("시험 갱신 실패") });
+            dbType.GetField("contentRefresh", flags).SetValue(Database.Instance, sourceType.GetProperty("Task").GetValue(failure, null));
+            apply.Invoke(Database.Instance, null);
+            if (!Database.Instance.ContentRefreshError.Contains("시험") || !object.ReferenceEquals(incomingQuizzes, Database.Instance.CommonSenses))
+                throw new Exception("갱신 실패 시 기존 데이터 유지 오류");
+            Console.WriteLine("PASS: background refresh apply, active quiz protection, failed refresh preserves cache");
             Console.WriteLine("PASS: Bot command queue, mention IDs, quiz, contribution, room isolation (no sends)");
             return 0;
         }

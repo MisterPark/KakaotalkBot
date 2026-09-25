@@ -139,6 +139,7 @@ namespace KakaotalkBot
 
         private void UpdateInternally()
         {
+            Database.Instance.ApplyContentRefresh();
             Database.Instance.MaintainMonth();
             ProcessDatabaseMessages();
             ProcessCommand();
@@ -739,11 +740,9 @@ namespace KakaotalkBot
 
         private void ProcessUpdateDB()
         {
-            Database.Instance.UpdateCommands();
+            Database.Instance.BeginContentRefresh();
+            News.BeginUpdate();
             Database.Instance.UpdateUserTable();
-            Database.Instance.UpdateCommonSenses();
-            Database.Instance.UpdateTopic();
-            News.Update();
         }
 
         private void ProcessQuiz()

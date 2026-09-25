@@ -8,7 +8,21 @@ namespace KakaotalkBot
 {
     public static class News
     {
-        private static List<Article> articles = new List<Article>();
+        private static volatile List<Article> articles = new List<Article>();
+        private static readonly HttpClient httpClient = CreateClient();
+        private static System.Threading.Tasks.Task refresh;
+        private static HttpClient CreateClient()
+        {
+            var client = new HttpClient { Timeout = System.TimeSpan.FromSeconds(10) };
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
+            return client;
+        }
+        internal static void BeginUpdate()
+        {
+            if (refresh != null && !refresh.IsCompleted) return;
+            if (refresh != null && refresh.IsFaulted) { var observed = refresh.Exception; }
+            refresh = System.Threading.Tasks.Task.Run(() => Update());
+        }
         public static string PoliticsTop6
         {
             get
@@ -36,8 +50,7 @@ namespace KakaotalkBot
         private static void UpdatePoliticsTop6()
         {
             string url = "https://news.naver.com/breakingnews/section/100/269";
-            var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
+
 
             // 동기적으로 HTML 가져오기
             var html = httpClient.GetStringAsync(url).GetAwaiter().GetResult();
@@ -45,7 +58,7 @@ namespace KakaotalkBot
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
 
-            articles.Clear();
+            var next = new List<Article>();
             for (int i = 0; i < 5; i++)
             {
                 var node = doc.DocumentNode.SelectSingleNode($"/html/body/div/div[2]/div[2]/div[2]/div[2]/div/div[1]/div[1]/ul/li[{i+1}]/div/div/div/a");
@@ -66,8 +79,9 @@ namespace KakaotalkBot
                 Article article = new Article();
                 article.Headline = headline;
                 article.Link = link;
-                articles.Add(article);
+                next.Add(article);
             }
+            articles = next;
         }
     }
 }
