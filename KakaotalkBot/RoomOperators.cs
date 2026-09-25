@@ -87,6 +87,20 @@ namespace KakaotalkBot
             if (!pending.TryGetValue(key, out old) || log >= old.Item1) pending[key] = Tuple.Create(log, expectedType);
         }
 
+        internal bool CheckQuizIssuer(long chat, long user, long superUser, long now, long receivedAt, out string error)
+        {
+            error = "명령 처리 대기 시간이 길어 취소했습니다. 다시 입력해 주세요.";
+            if (receivedAt <= 0 || now < receivedAt || now - receivedAt > 15) return false;
+            // 슈퍼계정은 닉네임이나 방별 역할 변경과 무관하게 고정 ID로만 확인합니다.
+            if (user > 0 && superUser > 0 && user == superUser) { error = null; return true; }
+            ChatMemberState member;
+            if (!TryMember(chat, user, now, out member, out error)) return false;
+            if (member.MemberType != 1)
+            { error = "문제 관리 권한이 없습니다."; return false; }
+            error = null;
+            return true;
+        }
+
         internal bool Check(long chat, long user, long now, out string error)
         {
             ChatMemberState member;

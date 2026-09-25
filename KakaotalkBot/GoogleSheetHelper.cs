@@ -256,6 +256,54 @@ namespace KakaotalkBot
             return service;
         }
 
+        internal void DeleteQuiz(string category, string question)
+        {
+            lock (lockObject)
+            {
+                var sheets = GetSheetsService();
+                var read = sheets.Spreadsheets.Values.Get(sheetId, "'상식퀴즈'!A:F");
+                read.ValueRenderOption = SpreadsheetsResource.ValuesResource.GetRequest.ValueRenderOptionEnum.FORMATTEDVALUE;
+                var values = read.Execute().Values;
+                var expected = new[] { "질문", "분류", "난이도", "답", "힌트", "해설" };
+                if (values == null || values.Count == 0 || !values[0].Select(Convert.ToString).SequenceEqual(expected))
+                    throw new InvalidDataException("상식퀴즈 시트의 열 구성이 바뀌어 삭제하지 않았습니다.");
+                var rows = values.Select(r => r.Select(Convert.ToString).ToList()).ToList();
+                int index = Quiz.FindDeletionRow(rows, category, question);
+                var metadata = sheets.Spreadsheets.Get(sheetId);
+                metadata.Fields = "sheets(properties(sheetId,title))";
+                var tab = metadata.Execute().Sheets.Single(s => s.Properties.Title == "상식퀴즈");
+                // 오래된 캐시의 행 번호를 사용하지 않고 삭제 직전에 원문을 다시 대조합니다.
+                var verify = sheets.Spreadsheets.Values.Get(sheetId, "'상식퀴즈'!A" + (index + 1) + ":F" + (index + 1)).Execute().Values;
+                if (verify == null || verify.Count != 1 || !verify[0].Select(Convert.ToString).SequenceEqual(rows[index]))
+                    throw new InvalidOperationException("문제 행이 변경되었습니다. 다시 확인해 주세요.");
+                sheets.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest
+                {
+                    Requests = new List<Request> { new Request { DeleteDimension = new DeleteDimensionRequest
+                    { Range = new DimensionRange { SheetId = tab.Properties.SheetId, Dimension = "ROWS", StartIndex = index, EndIndex = index + 1 } } } }
+                }, sheetId).Execute();
+            }
+        }
+
+        internal void AppendQuiz(Quiz quiz)
+        {
+            lock (lockObject)
+            {
+                var sheets = GetSheetsService();
+                var header = sheets.Spreadsheets.Values.Get(sheetId, "'상식퀴즈'!A1:F1").Execute().Values;
+                var expected = new[] { "질문", "분류", "난이도", "답", "힌트", "해설" };
+                if (header == null || header.Count != 1 || !header[0].Select(Convert.ToString).SequenceEqual(expected))
+                    throw new InvalidDataException("상식퀴즈 시트의 열 구성이 바뀌어 등록하지 않았습니다.");
+                var body = new ValueRange { Values = new List<IList<object>> { quiz.ToRow() } };
+                var append = sheets.Spreadsheets.Values.Append(body, sheetId, "'상식퀴즈'!A:F");
+                // 수식으로 해석하지 않고 입력한 문제·정답을 그대로 저장합니다.
+                append.ValueInputOption = SpreadsheetsResource.ValuesResource.AppendRequest.ValueInputOptionEnum.RAW;
+                append.InsertDataOption = SpreadsheetsResource.ValuesResource.AppendRequest.InsertDataOptionEnum.INSERTROWS;
+                var response = append.Execute();
+                if (response.Updates == null || response.Updates.UpdatedRows != 1)
+                    throw new IOException("문제 등록 결과를 확인하지 못했습니다.");
+            }
+        }
+
         public void WriteToSheet(string sheetName, List<string> messages)
         {
             RejectUnstructuredUserWrite(sheetName);

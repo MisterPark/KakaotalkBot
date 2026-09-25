@@ -175,7 +175,9 @@ internal static class BotCommandBridgeTests
             deliver(10, 3006, "/과학퀴즈", null);
             deliver(10, 3007, "/경제퀴즈", null);
             deliver(10, 3008, "/퀴즈목록", null);
-            if (!commands.Select(c => c.Keyword).SequenceEqual(new[] { "/퀘스트", "/일퀘", "/출첵", "/출첵", "/상식퀴즈", "/과학퀴즈", "/경제퀴즈", "/퀴즈목록" }))
+            deliver(10, 3009, "/퀴즈등록", null);
+            deliver(10, 3010, "/퀴즈삭제 과학 | 과학 문제", null);
+            if (!commands.Select(c => c.Keyword).SequenceEqual(new[] { "/퀘스트", "/일퀘", "/출첵", "/출첵", "/상식퀴즈", "/과학퀴즈", "/경제퀴즈", "/퀴즈목록", "/퀴즈등록", "/퀴즈삭제 과학 | 과학 문제" }))
                 throw new Exception("퀘스트 조회·출석·퀴즈 별칭 수신 연결 오류");
             StaticVariable.AutoReboot = previousAuto;
             Console.WriteLine("PASS: periodic room recycle, draft deferral, retry, queue and receiver state preserved (no native input)");
@@ -223,6 +225,38 @@ internal static class BotCommandBridgeTests
             if (!Database.Instance.GetQuizCategoryHelp().Contains("/과학퀴즈 — 2문제")) throw new Exception("분류 목록 오류");
             if (!Database.Instance.TrySetNextCommonSense(null)) throw new Exception("전체 출제 오류");
             Database.Instance.ResetCommonSense();
+            Quiz registered;
+            string registrationError;
+            if (!Quiz.TryParseRegistration("/퀴즈등록 과학 | 하 | 물의 화학식은? | H2O | 알파벳과 숫자 | 수소 두 개와 산소 한 개", out registered, out registrationError))
+                throw new Exception("문제 등록 파싱 실패");
+            if (!registered.ToRow().Select(Convert.ToString).SequenceEqual(new[] { "물의 화학식은?", "과학", "하", "H2O", "알파벳과 숫자", "수소 두 개와 산소 한 개" }))
+                throw new Exception("시트 등록 열 순서 오류");
+            foreach (string invalid in new[] { "/퀴즈등록", "/퀴즈등록 과학|하|문제|답|힌트", "/퀴즈등록 과학|하|문제||힌트|해설", "/퀴즈등록 과학|하|문제|답|힌트|해설|초과", "/퀴즈등록 과학|하|문제|답|힌트|해설\n다음줄" })
+                if (Quiz.TryParseRegistration(invalid, out registered, out registrationError)) throw new Exception("잘못된 등록 입력 허용");
+            if (Quiz.IsQuizCommand("/퀴즈등록") || !Quiz.IsQuizCommand("/과학퀴즈") || !Quiz.IsQuizCommand("/상식퀴즈"))
+                throw new Exception("공개 퀴즈 호출과 등록 구분 실패");
+            string deleteCategory, deleteQuestion;
+            if (!Quiz.TryParseDeletion("/퀴즈삭제 과학 | 물의 화학식은?", out deleteCategory, out deleteQuestion) || deleteCategory != "과학" || deleteQuestion != "물의 화학식은?")
+                throw new Exception("삭제 입력 파싱 오류");
+            if (Quiz.TryParseDeletion("/퀴즈삭제 과학 |", out deleteCategory, out deleteQuestion) || Quiz.IsQuizCommand("/퀴즈삭제 과학 | 과학퀴즈"))
+                throw new Exception("삭제 명령 분리 오류");
+            var deletionRows = new List<List<string>> { new List<string> { "질문", "분류" }, new List<string> { "물의 화학식은?", "과학" }, new List<string> { "물의 화학식은?", "기타" } };
+            if (Quiz.FindDeletionRow(deletionRows, "과학", "물의 화학식은?") != 1) throw new Exception("삭제 대상 행 오류");
+            bool missingRejected = false, duplicateRejected = false;
+            try { Quiz.FindDeletionRow(deletionRows, "과학", "물의"); } catch (InvalidOperationException) { missingRejected = true; }
+            deletionRows.Add(new List<string> { "물의 화학식은?", "과학" });
+            try { Quiz.FindDeletionRow(deletionRows, "과학", "물의 화학식은?"); } catch (InvalidOperationException) { duplicateRejected = true; }
+            if (!missingRejected || !duplicateRejected) throw new Exception("부분 일치 또는 중복 삭제 허용 오류");
+            Database.Instance.TrySetNextCommonSense("경제");
+            var preservedQuiz = Database.Instance.GetCurrentQuiz();
+            var deleteMethod = dbType.GetMethod("ApplyQuizDeletion", flags);
+            if ((bool)deleteMethod.Invoke(Database.Instance, new object[] { "과학", "새 문제" }) || !object.ReferenceEquals(preservedQuiz, Database.Instance.GetCurrentQuiz()))
+                throw new Exception("다른 문제 삭제 시 진행 중 문제 변경 오류");
+            if (!(bool)deleteMethod.Invoke(Database.Instance, new object[] { "경제", "경제 문제" }) || Database.Instance.GetCurrentQuiz() != null)
+                throw new Exception("진행 중인 삭제 문제 종료 오류");
+            if (Database.Instance.TrySetNextCommonSense("경제")) throw new Exception("삭제된 문제 재출제 오류");
+            Console.WriteLine("PASS: deletion routing, exact match, duplicate refusal, active quiz preservation/cancellation (no writes)");
+            Console.WriteLine("PASS: registration command routing, validation and sheet column mapping (no writes)");
             Console.WriteLine("PASS: category commands, category-only selection, active quiz protection, unknown category and full pool");
             Console.WriteLine("PASS: background refresh apply, active quiz protection, failed refresh preserves cache");
             Console.WriteLine("PASS: Bot command queue, mention IDs, quiz, contribution, room isolation (no sends)");

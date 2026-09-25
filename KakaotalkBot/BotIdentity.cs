@@ -19,6 +19,7 @@ namespace KakaotalkBot
         public string Key { get; set; }
         public string SpreadsheetId { get; set; }
         public string PreviousSpreadsheetId { get; set; }
+        public string SuperUserId { get; set; }
     }
 
     internal sealed class BotIdentity
@@ -29,6 +30,14 @@ namespace KakaotalkBot
         private readonly ConcurrentDictionary<long, string> encodedCache = new ConcurrentDictionary<long, string>();
         private readonly ConcurrentDictionary<string, long> decodedCache = new ConcurrentDictionary<string, long>();
         internal readonly string SpreadsheetId;
+        // PC를 바꿔도 같은 설정 파일의 봇 ID로 권한을 유지합니다. 읽기·복호화는 최초 한 번만 합니다.
+        private static readonly Lazy<long> superUserId = new Lazy<long>(() =>
+        {
+            var config = JsonConvert.DeserializeObject<BotIdentityConfiguration>(File.ReadAllText(ConfigurationPath));
+            if (config == null) throw new InvalidDataException("권한 설정 오류");
+            return string.IsNullOrWhiteSpace(config.SuperUserId) ? 0 : new BotIdentity(config).Decode(config.SuperUserId);
+        });
+        internal static long SuperUserId { get { return superUserId.Value; } }
         internal static string ConfigurationPath { get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BotIdentity.json"); } }
         internal static string ResolveSpreadsheet(string current)
         {

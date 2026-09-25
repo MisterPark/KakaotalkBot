@@ -30,6 +30,7 @@ namespace KakaotalkBot
         private GoogleSheetHelper contentReader;
         private System.Threading.Tasks.Task<ContentRefresh> contentRefresh;
         private ContentRefresh pendingContent;
+        private bool refreshAfterQuizRegistration;
         public string ContentRefreshError { get; private set; }
         private sealed class ContentRefresh
         {
@@ -55,18 +56,57 @@ namespace KakaotalkBot
             });
         }
 
+        internal System.Threading.Tasks.Task BeginQuizRegistration(Quiz quiz)
+        {
+            if (keywordSheet == null) throw new InvalidOperationException("DB 연결이 준비되지 않았습니다.");
+            if (commonSenses.Any(q => string.Equals(q.Question.Trim(), quiz.Question.Trim(), StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("같은 문제가 이미 등록되어 있습니다.");
+            var writer = keywordSheet;
+            return System.Threading.Tasks.Task.Run(() => writer.AppendQuiz(quiz));
+        }
+
+        internal System.Threading.Tasks.Task BeginQuizDeletion(string category, string question)
+        {
+            if (keywordSheet == null) throw new InvalidOperationException("DB 연결이 준비되지 않았습니다.");
+            var writer = keywordSheet;
+            return System.Threading.Tasks.Task.Run(() => writer.DeleteQuiz(category, question));
+        }
+
+        internal bool ApplyQuizDeletion(string category, string question)
+        {
+            var active = GetCurrentQuiz();
+            commonSenses.RemoveAll(q => string.Equals((q.Category ?? "").Trim(), category, StringComparison.Ordinal) &&
+                string.Equals((q.Question ?? "").Trim(), question, StringComparison.Ordinal));
+            currentAnswerIndex = active == null ? -1 : commonSenses.IndexOf(active);
+            quizCategories = Quiz.BuildCategoryIndex(commonSenses);
+            RefreshRegisteredQuiz();
+            return active != null && currentAnswerIndex < 0;
+        }
+
+        internal void RefreshRegisteredQuiz()
+        {
+            // 등록 전에 시작한 읽기 결과로 새 문제 목록이 덮어써지지 않게 합니다.
+            pendingContent = null;
+            refreshAfterQuizRegistration = true;
+        }
+
         internal void ApplyContentRefresh()
         {
             if (contentRefresh != null && contentRefresh.IsCompleted)
             {
                 var completed = contentRefresh; contentRefresh = null;
                 if (completed.IsFaulted) ContentRefreshError = "콘텐츠 갱신 실패: " + completed.Exception.GetBaseException().Message;
-                else if (!completed.IsCanceled && completed.Result.Reader == contentReader)
+                else if (!refreshAfterQuizRegistration && !completed.IsCanceled && completed.Result.Reader == contentReader)
                 {
                     var result = completed.Result;
                     commands = result.Commands; keywords = GetKeywords(); topics = result.Topics;
                     pendingContent = result; ContentRefreshError = null;
                 }
+            }
+            if (refreshAfterQuizRegistration && contentRefresh == null)
+            {
+                refreshAfterQuizRegistration = false;
+                BeginContentRefresh();
             }
             // 진행 중인 퀴즈의 인덱스가 다른 문제를 가리키지 않도록 종료 후 교체합니다.
             if (pendingContent != null && currentAnswerIndex < 0)
@@ -554,7 +594,9 @@ namespace KakaotalkBot
         {
             text = text.Replace("/네임드 [페이지]", "/네임드")
                 .Replace("네임드는 페이지당 20명입니다.", "네임드는 전체 목록을 표시합니다.");
-            if (!text.Contains("/퀴즈목록")) text += "\n/퀴즈 또는 /상식퀴즈 — 전체 출제\n/분류명퀴즈 — 해당 분류 출제 (예: /과학퀴즈, /경제퀴즈)\n/퀴즈목록 — 가능한 분류";
+            if (!text.Contains("/퀴즈목록")) text += "\n/퀴즈 또는 /상식퀴즈 — 전체 문제 풀기\n/분류명퀴즈 — 해당 분류 문제 풀기 (예: /과학퀴즈, /경제퀴즈)\n/퀴즈목록 — 가능한 분류";
+            if (!text.Contains("/퀴즈등록")) text += "\n[문제 등록 · 권한 필요]\n" + Quiz.RegistrationHelp;
+            if (!text.Contains("/퀴즈삭제")) text += "\n[문제 삭제 · 권한 필요]\n" + Quiz.DeletionHelp;
             if (!text.Contains("/퀘스트")) text += "\n/퀘스트 또는 /일퀘 — 오늘의 진행 상황·자동 지급 보상";
             if (!text.Contains("/레벨랭킹")) text += "\n/레벨랭킹";
             if (!text.Contains("/네임드")) text += "\n/네임드";

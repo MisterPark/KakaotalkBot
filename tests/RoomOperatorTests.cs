@@ -24,6 +24,10 @@ class RoomOperatorTests
             var store = new RoomOperatorStore();
             Check(!store.Check(10, id, 100, out error), "수신 전 권한 없음");
             store.Observe(Roster(100, 1));
+            Check(!store.CheckQuizIssuer(10, id, 0, 100, 100, out error), "부방장 퀴즈 등록 거부");
+            Check(!store.CheckQuizIssuer(10, 20, id, 100, 100, out error), "동일 닉네임 슈퍼계정 사칭 거부");
+            Check(store.CheckQuizIssuer(10, 20, 20, 100, 100, out error), "고정 ID 슈퍼계정 허용");
+            Check(!store.CheckQuizIssuer(10, 20, 20, 116, 100, out error), "지연된 슈퍼계정 명령 거부");
             Check(store.Check(10, id, 100, out error), "부방장 허용");
             Check(!store.Check(10, 20, 100, out error), "동명 일반 사용자 거부");
             Check(!store.Check(11, id, 100, out error), "다른 방 권한 거부");
@@ -41,6 +45,8 @@ class RoomOperatorTests
             Check(!store.Check(10, id, 102, out error) && !store.Records.Values.Single().IsOperator, "해임 저장 반영");
             store.Observe(Roster(103, 5, 1));
             Check(store.Check(10, id, 103, out error), "방장 허용");
+            Check(store.CheckQuizIssuer(10, id, 0, 103, 103, out error), "방장 퀴즈 등록 허용");
+            Check(!store.CheckQuizIssuer(10, id, 0, 120, 120, out error), "오래된 방장 정보 거부");
             store.Observe(Roster(104, 6, 16));
             Check(!store.Check(10, id, 104, out error), "미확인 역할 권한 없음");
             var absent = Roster(105, 7); absent.Members[0].IsPresent = false; store.Observe(absent);

@@ -139,6 +139,7 @@ namespace KakaotalkBot
 
         private void UpdateInternally()
         {
+            CompleteQuizRegistration();
             Database.Instance.ApplyContentRefresh();
             Database.Instance.MaintainMonth();
             ProcessDatabaseMessages();
@@ -290,7 +291,7 @@ namespace KakaotalkBot
             else
             {
                 ProcessQuizAnswer(chat.AuthorId, chat.Nickname, message, chat.LogId);
-                if (message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || Quiz.IsQuizCommand(message) || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
+                if (message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || Quiz.IsQuizCommand(message) || OperatorCommandPolicy.Name(message) == "/퀴즈등록" || OperatorCommandPolicy.Name(message) == "/퀴즈삭제" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
                     OperatorCommandPolicy.Name(message) == "/월간랭킹" || OperatorCommandPolicy.Name(message) == "/채팅랭킹" ||
                     OperatorCommandPolicy.Name(message) == "/네임드" || OperatorCommandPolicy.Name(message) == "/레벨랭킹" || OperatorCommandPolicy.Name(message) == "/랭킹" || Database.Instance.Keywords.Any(k => message.StartsWith(k)))
                     ProcessKeyword(chat.Nickname, message, chat.AuthorId, chat.LogId, chat.ChatId, chat.Mentions);
@@ -638,6 +639,37 @@ namespace KakaotalkBot
                     ProcessCommonSense(command.Keyword == "/상식퀴즈" || command.Keyword == "/퀴즈" ? null :
                         command.Keyword.Substring(1, command.Keyword.Length - 3).Trim());
             }
+            else if (operation == "/퀴즈등록" || operation == "/퀴즈삭제")
+            {
+                string error;
+                if (!Database.Instance.Operators.CheckQuizIssuer(command.ChatId, command.AuthorId,
+                    BotIdentity.SuperUserId, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), command.ReceivedAt, out error))
+                { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, error); return; }
+                if (quizRegistration != null)
+                { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "이전 문제 변경을 처리 중입니다. 잠시 후 다시 시도해 주세요."); return; }
+                try
+                {
+                    if (operation == "/퀴즈삭제")
+                    {
+                        string category, question;
+                        if (!Quiz.TryParseDeletion(command.Keyword, out category, out question))
+                        { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, Quiz.DeletionHelp); return; }
+                        quizRegistration = Database.Instance.BeginQuizDeletion(category, question);
+                        quizDeletionCategory = category; quizDeletionQuestion = question;
+                    }
+                    else
+                    {
+                        Quiz quiz;
+                        if (!Quiz.TryParseRegistration(command.Keyword, out quiz, out error))
+                        { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, error); return; }
+                        quizRegistration = Database.Instance.BeginQuizRegistration(quiz);
+                        quizDeletionCategory = quizDeletionQuestion = null;
+                    }
+                }
+                catch (InvalidOperationException ex)
+                { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, ex.Message); return; }
+                quizRegistrationRoom = command.ChatId;
+            }
             else if (command.Keyword == "/암호검증")
             {
                 receiver.WatchDirect(command.AuthorId);
@@ -669,6 +701,36 @@ namespace KakaotalkBot
                 }
             }
 
+        }
+
+        private System.Threading.Tasks.Task quizRegistration;
+        private long quizRegistrationRoom;
+        private string quizDeletionCategory, quizDeletionQuestion;
+
+        private void CompleteQuizRegistration()
+        {
+            if (quizRegistration == null || !quizRegistration.IsCompleted) return;
+            var completed = quizRegistration;
+            quizRegistration = null;
+            string result;
+            if (completed.IsFaulted || completed.IsCanceled)
+            {
+                if (completed.IsFaulted) LastProcessingError = "퀴즈 변경 확인 실패: " + completed.Exception.GetBaseException().Message;
+                // 통신이 끊겨도 서버에 저장됐을 수 있으므로 자동 재전송하지 않습니다.
+                var reason = completed.IsFaulted ? completed.Exception.GetBaseException() : null;
+                result = reason is InvalidOperationException ? reason.Message :
+                    "문제 변경 결과를 확인하지 못했습니다. 시트를 확인한 뒤 다시 시도해 주세요.";
+            }
+            else if (quizDeletionCategory != null)
+            {
+                bool ended = Database.Instance.ApplyQuizDeletion(quizDeletionCategory, quizDeletionQuestion);
+                if (ended) quizAnswers.Clear();
+                result = "문제를 삭제했습니다." + (ended ? " 진행 중이던 해당 퀴즈도 종료했습니다." : "");
+            }
+            else result = "문제를 등록했습니다. 문제 목록을 갱신합니다. 진행 중인 퀴즈가 있다면 종료 후 반영됩니다.";
+            Database.Instance.RefreshRegisteredQuiz();
+            if (SelectedRoom != null && SelectedRoom.ChatId == quizRegistrationRoom)
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, result);
         }
 
         private void ProcessCommonSense(string category = null)
