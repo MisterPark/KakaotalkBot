@@ -119,6 +119,7 @@ namespace KakaotalkBot
             button2.Enabled = !bot.IsReceiverStopping && catalogTask == null && bot.SelectedRoom != null;
             button2.Text = bot.IsBotRunning ? "DB 수신 중지" : bot.IsReceiverStopping ? "수신 종료 중…" : "DB 수신 시작";
             if (bot.HasReceiver && catalogTask == null) databaseStatus.Text = bot.ReceiveStatus;
+            if (News.LastRefreshError != null) databaseStatus.Text = News.LastRefreshError;
             if (Database.Instance.ContentRefreshError != null) databaseStatus.Text = Database.Instance.ContentRefreshError;
             if (databaseError != null) databaseStatus.Text = databaseError;
             if (bot.RoomRecycleStatus != null) databaseStatus.Text = bot.RoomRecycleStatus;
