@@ -30,11 +30,14 @@ namespace KakaotalkBot
         private GoogleSheetHelper contentReader;
         private System.Threading.Tasks.Task<ContentRefresh> contentRefresh;
         private ContentRefresh pendingContent;
-        private bool refreshAfterQuizRegistration;
+        private QuizChangeStore quizChanges;
+        public int PendingQuizChanges { get { return quizChanges == null ? 0 : quizChanges.Count; } }
         public string ContentRefreshError { get; private set; }
         private sealed class ContentRefresh
         {
             internal GoogleSheetHelper Reader;
+            internal string Error;
+            internal QuizChange[] SavedQuizChanges;
             internal List<List<string>> Commands;
             internal List<Quiz> Quizzes;
             internal Dictionary<string, List<int>> QuizCategories;
@@ -45,49 +48,54 @@ namespace KakaotalkBot
         {
             if (contentReader == null || contentRefresh != null) return;
             var reader = contentReader;
+            var quizSnapshot = quizChanges == null ? new QuizChange[0] : quizChanges.Snapshot();
             contentRefresh = System.Threading.Tasks.Task.Run(() =>
             {
-                var result = new ContentRefresh { Reader = reader, Commands = reader.ReadCommandTables() };
-                result.Quizzes = reader.ReadAllFromSheet("상식퀴즈").Skip(1).Select(Quiz.ToCommonSense).ToList();
-                result.QuizCategories = Quiz.BuildCategoryIndex(result.Quizzes);
-                result.Topics = reader.ReadAllFromSheet("Topic").Skip(1).Select(Topic.ToTopic).ToList();
-                if (result.Quizzes.Count == 0 || result.Topics.Count == 0) throw new InvalidOperationException("퀴즈·주제 갱신 결과가 비어 있어 기존 내용을 유지합니다.");
+                var result = new ContentRefresh { Reader = reader };
+                try
+                {
+                    result.Commands = reader.ReadCommandTables();
+                    result.Quizzes = reader.SynchronizeQuizzes(quizSnapshot);
+                    result.QuizCategories = Quiz.BuildCategoryIndex(result.Quizzes);
+                    result.Topics = reader.ReadAllFromSheet("Topic").Skip(1).Select(Topic.ToTopic).ToList();
+                    if (result.Topics.Count == 0) throw new InvalidOperationException("주제 갱신 결과가 비어 있어 기존 내용을 유지합니다.");
+                    result.SavedQuizChanges = quizSnapshot;
+                }
+                catch (Exception error)
+                {
+                    // 취소 예외가 Task를 취소 상태로 만들어 오류 안내 없이 사라지는 것을 막습니다.
+                    result.Error = "콘텐츠 갱신 실패: " + error.Message;
+                }
                 return result;
             });
         }
 
-        internal System.Threading.Tasks.Task BeginQuizRegistration(Quiz quiz)
+        internal void RegisterQuiz(Quiz quiz)
         {
-            if (keywordSheet == null) throw new InvalidOperationException("DB 연결이 준비되지 않았습니다.");
-            if (commonSenses.Any(q => string.Equals(q.Question.Trim(), quiz.Question.Trim(), StringComparison.OrdinalIgnoreCase)))
+            if (quizChanges == null) throw new InvalidOperationException("문제 DB가 준비되지 않았습니다.");
+            if (commonSenses.Any(q => QuizChange.SameKey(q, quiz)))
                 throw new InvalidOperationException("같은 문제가 이미 등록되어 있습니다.");
-            var writer = keywordSheet;
-            return System.Threading.Tasks.Task.Run(() => writer.AppendQuiz(quiz));
+            quizChanges.Stage(null, quiz);
+            commonSenses.Add(QuizChange.Copy(quiz));
+            quizCategories = Quiz.BuildCategoryIndex(commonSenses);
         }
 
-        internal System.Threading.Tasks.Task BeginQuizDeletion(string category, string question)
+        internal bool DeleteQuiz(string category, string question)
         {
-            if (keywordSheet == null) throw new InvalidOperationException("DB 연결이 준비되지 않았습니다.");
-            var writer = keywordSheet;
-            return System.Threading.Tasks.Task.Run(() => writer.DeleteQuiz(category, question));
+            if (quizChanges == null) throw new InvalidOperationException("문제 DB가 준비되지 않았습니다.");
+            var matches = commonSenses.Where(q => q.Category.Trim() == category && q.Question.Trim() == question).ToList();
+            if (matches.Count != 1) throw new InvalidOperationException(matches.Count == 0 ? "일치하는 문제가 없습니다." : "같은 문제가 여러 건입니다. 시트에서 확인해 주세요.");
+            quizChanges.Stage(matches[0], null);
+            return ApplyQuizDeletion(category, question);
         }
 
         internal bool ApplyQuizDeletion(string category, string question)
         {
             var active = GetCurrentQuiz();
-            commonSenses.RemoveAll(q => string.Equals((q.Category ?? "").Trim(), category, StringComparison.Ordinal) &&
-                string.Equals((q.Question ?? "").Trim(), question, StringComparison.Ordinal));
+            commonSenses.RemoveAll(q => q.Category.Trim() == category && q.Question.Trim() == question);
             currentAnswerIndex = active == null ? -1 : commonSenses.IndexOf(active);
             quizCategories = Quiz.BuildCategoryIndex(commonSenses);
-            RefreshRegisteredQuiz();
             return active != null && currentAnswerIndex < 0;
-        }
-
-        internal void RefreshRegisteredQuiz()
-        {
-            // 등록 전에 시작한 읽기 결과로 새 문제 목록이 덮어써지지 않게 합니다.
-            pendingContent = null;
-            refreshAfterQuizRegistration = true;
         }
 
         internal void ApplyContentRefresh()
@@ -95,22 +103,28 @@ namespace KakaotalkBot
             if (contentRefresh != null && contentRefresh.IsCompleted)
             {
                 var completed = contentRefresh; contentRefresh = null;
-                if (completed.IsFaulted) ContentRefreshError = "콘텐츠 갱신 실패: " + completed.Exception.GetBaseException().Message;
-                else if (!refreshAfterQuizRegistration && !completed.IsCanceled && completed.Result.Reader == contentReader)
+                if (completed.IsCanceled) ContentRefreshError = "콘텐츠 조회가 취소되거나 시간 초과되었습니다. 기존 데이터를 유지하고 다음 주기에 다시 시도합니다.";
+                else if (completed.IsFaulted) ContentRefreshError = "콘텐츠 갱신 실패: " + completed.Exception.GetBaseException().Message;
+                else if (!completed.IsCanceled && completed.Result.Reader == contentReader)
                 {
                     var result = completed.Result;
-                    commands = result.Commands; keywords = GetKeywords(); topics = result.Topics;
-                    pendingContent = result; ContentRefreshError = null;
+                    if (result.SavedQuizChanges != null && result.SavedQuizChanges.Length > 0 && quizChanges != null)
+                        quizChanges.Confirm(result.SavedQuizChanges);
+                    if (result.Error != null) ContentRefreshError = result.Error;
+                    else
+                    {
+                        commands = result.Commands; keywords = GetKeywords(); topics = result.Topics;
+                        pendingContent = result; ContentRefreshError = null;
+                    }
                 }
-            }
-            if (refreshAfterQuizRegistration && contentRefresh == null)
-            {
-                refreshAfterQuizRegistration = false;
-                BeginContentRefresh();
             }
             // 진행 중인 퀴즈의 인덱스가 다른 문제를 가리키지 않도록 종료 후 교체합니다.
             if (pendingContent != null && currentAnswerIndex < 0)
-            { commonSenses = pendingContent.Quizzes; quizCategories = pendingContent.QuizCategories ?? Quiz.BuildCategoryIndex(commonSenses); pendingContent = null; }
+            {
+                commonSenses = quizChanges == null || quizChanges.Count == 0 ? pendingContent.Quizzes : quizChanges.Overlay(pendingContent.Quizzes);
+                quizCategories = Quiz.BuildCategoryIndex(commonSenses);
+                pendingContent = null;
+            }
         }
         private List<string> keywords = new List<string>();
         private List<List<string>> commands = new List<List<string>>();
@@ -200,7 +214,8 @@ namespace KakaotalkBot
                 MaintainMonth();
             }
             catch (Exception error) { UserStorageReady = false; UserStorageError = "사용자 DB 읽기 실패: " + error.Message; throw; }
-            commonSenses = GetCommonSenses();
+            quizChanges = new QuizChangeStore(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "QuizChanges-" + spreadsheetId + ".json"));
+            commonSenses = quizChanges.Overlay(GetCommonSenses());
             quizCategories = Quiz.BuildCategoryIndex(commonSenses);
             topics = GetTopic();
         }
@@ -239,7 +254,7 @@ namespace KakaotalkBot
             var list = GetCommonSenses();
             if (list != null && list.Count != 0)
             {
-                commonSenses = list;
+                commonSenses = quizChanges == null ? list : quizChanges.Overlay(list);
                 quizCategories = Quiz.BuildCategoryIndex(commonSenses);
 
             }

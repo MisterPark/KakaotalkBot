@@ -19,7 +19,8 @@ namespace KakaotalkBot
         private string sheetName = string.Empty;
         private string sheetId = string.Empty;
 
-        private object lockObject = new object();
+        // 서비스·직렬화기·ID 확인 상태를 같은 잠금으로 보호합니다.
+        private readonly object lockObject = new object();
 
         private SheetsService service;
         private BotIdentity identity;
@@ -179,23 +180,26 @@ namespace KakaotalkBot
 
         internal List<List<string>> ReadActivityTable(string title, string[] headers)
         {
-            var request = GetSheetsService().Spreadsheets.Values.Get(sheetId, "'" + title + "'!A1:" + (char)('A' + headers.Length - 1));
-            request.ValueRenderOption = SpreadsheetsResource.ValuesResource.GetRequest.ValueRenderOptionEnum.UNFORMATTEDVALUE;
-            var values = DecodeRows(title, request.Execute().Values);
-            if (values == null || values.Count == 0 || !values[0].Select(Convert.ToString).SequenceEqual(headers))
-                throw new FormatException(title + " 헤더가 잘못되었습니다.");
-            var result = new List<List<string>>();
-            foreach (var row in values.Skip(1))
+            lock (lockObject)
             {
-                if (row.Count == 0 || row.All(v => string.IsNullOrEmpty(Convert.ToString(v))))
-                    throw new FormatException(title + " 중간에 빈 행이 있습니다.");
-                // ID 컬럼은 숫자 셀로 저장된 반올림 값을 허용하지 않습니다.
-                int[] idColumns = title == "DB_RoomOperators" ? new[] { 0, 1, 8, 9 } : title == "DB_RoomUsers" ? new[] { 0, 1, 5, 6 } : title == "DB_RoomEvents" ? new[] { 1, 2, 5 } : new[] { 1, 2, 6 };
-                foreach (int column in (title == "DB_Operations" || title == "DB_RoomTitles" || title == "DB_DailyQuests") ? new int[0] : idColumns)
-                    if (row.Count <= column || !(row[column] is string)) throw new FormatException(title + "의 ID는 텍스트여야 합니다.");
-                result.Add(row.Select(v => Convert.ToString(v, CultureInfo.InvariantCulture)).Concat(Enumerable.Repeat("", headers.Length - row.Count)).ToList());
+                var request = GetSheetsService().Spreadsheets.Values.Get(sheetId, "'" + title + "'!A1:" + (char)('A' + headers.Length - 1));
+                request.ValueRenderOption = SpreadsheetsResource.ValuesResource.GetRequest.ValueRenderOptionEnum.UNFORMATTEDVALUE;
+                var values = DecodeRows(title, request.Execute().Values);
+                if (values == null || values.Count == 0 || !values[0].Select(Convert.ToString).SequenceEqual(headers))
+                    throw new FormatException(title + " 헤더가 잘못되었습니다.");
+                var result = new List<List<string>>();
+                foreach (var row in values.Skip(1))
+                {
+                    if (row.Count == 0 || row.All(v => string.IsNullOrEmpty(Convert.ToString(v))))
+                        throw new FormatException(title + " 중간에 빈 행이 있습니다.");
+                    // ID 컬럼은 숫자 셀로 저장된 반올림 값을 허용하지 않습니다.
+                    int[] idColumns = title == "DB_RoomOperators" ? new[] { 0, 1, 8, 9 } : title == "DB_RoomUsers" ? new[] { 0, 1, 5, 6 } : title == "DB_RoomEvents" ? new[] { 1, 2, 5 } : new[] { 1, 2, 6 };
+                    foreach (int column in (title == "DB_Operations" || title == "DB_RoomTitles" || title == "DB_DailyQuests") ? new int[0] : idColumns)
+                        if (row.Count <= column || !(row[column] is string)) throw new FormatException(title + "의 ID는 텍스트여야 합니다.");
+                    result.Add(row.Select(v => Convert.ToString(v, CultureInfo.InvariantCulture)).Concat(Enumerable.Repeat("", headers.Length - row.Count)).ToList());
+                }
+                return result;
             }
-            return result;
         }
 
         // 두 표를 모두 읽은 뒤 교체하므로 통신 실패 시 기존 명령 목록이 유지됩니다.
@@ -205,7 +209,7 @@ namespace KakaotalkBot
             {
                 var request = GetSheetsService().Spreadsheets.Values.BatchGet(sheetId);
                 request.Ranges = new[] { "'키워드'!A:B", "'어록'!A:B" };
-                var tables = request.Execute().ValueRanges;
+                var tables = ExecuteRead(() => ExecuteBoundedRead(request)).ValueRanges;
                 if (tables == null || tables.Count != 2)
                     throw new InvalidDataException("키워드와 어록 시트를 모두 읽지 못했습니다.");
                 var result = new List<List<string>>();
@@ -226,6 +230,32 @@ namespace KakaotalkBot
             }
         }
 
+        // 읽기 요청만 재시도합니다. 등록·삭제는 응답 유실 시 중복 실행 위험이 있어 제외합니다.
+        internal static T ExecuteRead<T>(Func<T> read, Action<int> wait = null)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                try { return read(); }
+                catch (Exception error)
+                {
+                    var apiError = error as Google.GoogleApiException;
+                    int status = apiError == null ? 0 : (int)apiError.HttpStatusCode;
+                    bool transient = error is System.OperationCanceledException ||
+                        error is System.Net.Http.HttpRequestException || status == 408 || status == 429 || status >= 500;
+                    if (!transient) throw;
+                    if (attempt >= 2)
+                        throw new IOException("Google Sheets 조회가 시간 초과 또는 일시적인 통신 오류로 실패했습니다. 기존 데이터는 유지됩니다.", error);
+                    (wait ?? System.Threading.Thread.Sleep)(attempt == 0 ? 500 : 1500);
+                }
+            }
+        }
+
+        private static T ExecuteBoundedRead<T>(Google.Apis.Requests.IClientServiceRequest<T> request)
+        {
+            using (var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                return request.ExecuteAsync(timeout.Token).GetAwaiter().GetResult();
+        }
+
         public GoogleSheetHelper(string applicationName, string sheetId)
         {
             this.applicationName = applicationName;
@@ -234,94 +264,93 @@ namespace KakaotalkBot
 
         private SheetsService GetSheetsService()
         {
-            if (service == null)
+            lock (lockObject)
             {
-                GoogleCredential credential;
-                using (var stream = new FileStream(CredentialFile, FileMode.Open, FileAccess.Read))
+                if (service == null)
                 {
-                    credential = GoogleCredential.FromStream(stream).CreateScoped(Scopes);
+                    GoogleCredential credential;
+                    using (var stream = new FileStream(CredentialFile, FileMode.Open, FileAccess.Read))
+                    {
+                        credential = GoogleCredential.FromStream(stream).CreateScoped(Scopes);
+                    }
+
+                    // 셀의 ISO 날짜 문자열을 DateTime으로 추측 변환하면 재저장할 때 원문이 바뀝니다.
+                    var jsonSettings = Google.Apis.Json.NewtonsoftJsonSerializer.CreateDefaultSettings();
+                    jsonSettings.DateParseHandling = Newtonsoft.Json.DateParseHandling.None;
+                    service = new SheetsService(new BaseClientService.Initializer()
+                    {
+                        HttpClientInitializer = credential,
+                        ApplicationName = applicationName,
+                        Serializer = new Google.Apis.Json.NewtonsoftJsonSerializer(jsonSettings),
+                    });
                 }
 
-                // 셀의 ISO 날짜 문자열을 DateTime으로 추측 변환하면 재저장할 때 원문이 바뀝니다.
-                var jsonSettings = Google.Apis.Json.NewtonsoftJsonSerializer.CreateDefaultSettings();
-                jsonSettings.DateParseHandling = Newtonsoft.Json.DateParseHandling.None;
-                service = new SheetsService(new BaseClientService.Initializer()
-                {
-                    HttpClientInitializer = credential,
-                    ApplicationName = applicationName,
-                    Serializer = new Google.Apis.Json.NewtonsoftJsonSerializer(jsonSettings),
-                });
+                return service;
             }
-
-            return service;
         }
 
-        internal void DeleteQuiz(string category, string question)
+        // 주기 작업의 스냅샷만 받습니다. 메모리의 변경 목록을 통신 스레드에서 수정하지 않습니다.
+        internal List<Quiz> SynchronizeQuizzes(QuizChange[] changes)
         {
             lock (lockObject)
             {
-                var sheets = GetSheetsService();
-                var read = sheets.Spreadsheets.Values.Get(sheetId, "'상식퀴즈'!A:F");
-                read.ValueRenderOption = SpreadsheetsResource.ValuesResource.GetRequest.ValueRenderOptionEnum.FORMATTEDVALUE;
-                var values = read.Execute().Values;
+                var rows = ReadAllFromSheet("상식퀴즈");
                 var expected = new[] { "질문", "분류", "난이도", "답", "힌트", "해설" };
-                if (values == null || values.Count == 0 || !values[0].Select(Convert.ToString).SequenceEqual(expected))
-                    throw new InvalidDataException("상식퀴즈 시트의 열 구성이 바뀌어 삭제하지 않았습니다.");
-                var rows = values.Select(r => r.Select(Convert.ToString).ToList()).ToList();
-                int index = Quiz.FindDeletionRow(rows, category, question);
-                var metadata = sheets.Spreadsheets.Get(sheetId);
+                if (rows.Count == 0 || !rows[0].SequenceEqual(expected))
+                    throw new InvalidDataException("상식퀴즈 시트의 열 구성이 바뀌었습니다.");
+                var remote = rows.Skip(1).Select(Quiz.ToCommonSense).ToList();
+                var merged = QuizChangeStore.Merge(remote, changes);
+                if (changes.Length == 0) return remote;
+                var api = GetSheetsService();
+                var metadata = api.Spreadsheets.Get(sheetId);
                 metadata.Fields = "sheets(properties(sheetId,title))";
-                var tab = metadata.Execute().Sheets.Single(s => s.Properties.Title == "상식퀴즈");
-                // 오래된 캐시의 행 번호를 사용하지 않고 삭제 직전에 원문을 다시 대조합니다.
-                var verify = sheets.Spreadsheets.Values.Get(sheetId, "'상식퀴즈'!A" + (index + 1) + ":F" + (index + 1)).Execute().Values;
-                if (verify == null || verify.Count != 1 || !verify[0].Select(Convert.ToString).SequenceEqual(rows[index]))
-                    throw new InvalidOperationException("문제 행이 변경되었습니다. 다시 확인해 주세요.");
-                sheets.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest
+                int tabId = ExecuteRead(() => ExecuteBoundedRead(metadata)).Sheets.Single(s => s.Properties.Title == "상식퀴즈").Properties.SheetId.Value;
+                var requests = new List<Request>();
+                // 행 이동 영향이 없도록 아래 행부터 삭제하고, 새 행은 뒤에 추가합니다.
+                for (int i = remote.Count - 1; i >= 0; i--)
                 {
-                    Requests = new List<Request> { new Request { DeleteDimension = new DeleteDimensionRequest
-                    { Range = new DimensionRange { SheetId = tab.Properties.SheetId, Dimension = "ROWS", StartIndex = index, EndIndex = index + 1 } } } }
-                }, sheetId).Execute();
-            }
-        }
-
-        internal void AppendQuiz(Quiz quiz)
-        {
-            lock (lockObject)
-            {
-                var sheets = GetSheetsService();
-                var header = sheets.Spreadsheets.Values.Get(sheetId, "'상식퀴즈'!A1:F1").Execute().Values;
-                var expected = new[] { "질문", "분류", "난이도", "답", "힌트", "해설" };
-                if (header == null || header.Count != 1 || !header[0].Select(Convert.ToString).SequenceEqual(expected))
-                    throw new InvalidDataException("상식퀴즈 시트의 열 구성이 바뀌어 등록하지 않았습니다.");
-                var body = new ValueRange { Values = new List<IList<object>> { quiz.ToRow() } };
-                var append = sheets.Spreadsheets.Values.Append(body, sheetId, "'상식퀴즈'!A:F");
-                // 수식으로 해석하지 않고 입력한 문제·정답을 그대로 저장합니다.
-                append.ValueInputOption = SpreadsheetsResource.ValuesResource.AppendRequest.ValueInputOptionEnum.RAW;
-                append.InsertDataOption = SpreadsheetsResource.ValuesResource.AppendRequest.InsertDataOptionEnum.INSERTROWS;
-                var response = append.Execute();
-                if (response.Updates == null || response.Updates.UpdatedRows != 1)
-                    throw new IOException("문제 등록 결과를 확인하지 못했습니다.");
+                    var c = changes.FirstOrDefault(p => QuizChange.SameKey(remote[i], p.Target));
+                    if (c == null || c.After != null || !QuizChange.SameValue(remote[i], c.Before)) continue;
+                    requests.Add(new Request { DeleteDimension = new DeleteDimensionRequest
+                    { Range = new DimensionRange { SheetId = tabId, Dimension = "ROWS", StartIndex = i + 1, EndIndex = i + 2 } } });
+                }
+                var appended = changes.Where(c => c.After != null && !remote.Any(q => QuizChange.SameKey(q, c.After)))
+                    .Select(c => new RowData { Values = c.After.ToRow().Select(v => new CellData { UserEnteredValue = new ExtendedValue { StringValue = Convert.ToString(v) } }).ToList() }).ToList();
+                if (appended.Count > 0) requests.Add(new Request { AppendCells = new AppendCellsRequest { SheetId = tabId, Fields = "userEnteredValue", Rows = appended } });
+                if (requests.Count > 0)
+                {
+                    // 시트 편집과의 충돌을 쓰기 직전 한 번 더 확인합니다.
+                    var verify = ReadAllFromSheet("상식퀴즈");
+                    if (verify.Count != rows.Count || verify.Where((r, i) => !r.SequenceEqual(rows[i])).Any())
+                        throw new InvalidOperationException("퀴즈 동기화 중 시트가 변경되어 다음 주기에 다시 확인합니다.");
+                    // 응답 유실 시 다음 주기에 새 서버 상태와 목표 값을 비교합니다. 맹목적 재전송 금지.
+                    api.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest { Requests = requests }, sheetId).Execute();
+                }
+                return merged;
             }
         }
 
         public void WriteToSheet(string sheetName, List<string> messages)
         {
-            RejectUnstructuredUserWrite(sheetName);
-            var service = GetSheetsService();
-
-            var valueRange = new ValueRange();
-            var values = new List<IList<object>>();
-
-            foreach (var msg in messages)
+            lock (lockObject)
             {
-                values.Add(new List<object> { msg });
+                RejectUnstructuredUserWrite(sheetName);
+                var service = GetSheetsService();
+
+                var valueRange = new ValueRange();
+                var values = new List<IList<object>>();
+
+                foreach (var msg in messages)
+                {
+                    values.Add(new List<object> { msg });
+                }
+
+                valueRange.Values = EncodeRows(sheetName, values);
+
+                var appendRequest = service.Spreadsheets.Values.Append(valueRange, sheetId, $"{sheetName}!A1");
+                appendRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.AppendRequest.ValueInputOptionEnum.RAW;
+                appendRequest.Execute();
             }
-
-            valueRange.Values = EncodeRows(sheetName, values);
-
-            var appendRequest = service.Spreadsheets.Values.Append(valueRange, sheetId, $"{sheetName}!A1");
-            appendRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.AppendRequest.ValueInputOptionEnum.RAW;
-            appendRequest.Execute();
         }
 
         public void WriteToSheetAll(string sheetName, List<List<object>> messages)
@@ -375,23 +404,11 @@ namespace KakaotalkBot
             lock (lockObject)
             {
                 var service = GetSheetsService();
-                var range = $"{sheetName}"; // 전체 시트 범위
-                ValueRange response = null;
-                
-                try
-                {
-                    var request = service.Spreadsheets.Values.Get(sheetId, range);
-                    response = request.Execute();
-                    values = response.Values;
-                }
-                catch (Exception e)
-                {
-
-                }
-                finally
-                {
-
-                }
+                // 문제·주제에서 실제 사용하는 열만 요청해 응답 크기를 줄입니다.
+                var range = sheetName == "상식퀴즈" ? "'상식퀴즈'!A:F" :
+                    sheetName == "Topic" ? "'Topic'!A:D" : "'" + sheetName.Replace("'", "''") + "'";
+                var request = service.Spreadsheets.Values.Get(sheetId, range);
+                values = ExecuteRead(() => ExecuteBoundedRead(request)).Values;
             }
             
             if (values != null && values.Count > 0)

@@ -258,6 +258,40 @@ internal static class BotCommandBridgeTests
             Console.WriteLine("PASS: deletion routing, exact match, duplicate refusal, active quiz preservation/cancellation (no writes)");
             Console.WriteLine("PASS: registration command routing, validation and sheet column mapping (no writes)");
             Console.WriteLine("PASS: category commands, category-only selection, active quiz protection, unknown category and full pool");
+            var executeRead = typeof(GoogleSheetHelper).GetMethod("ExecuteRead", BindingFlags.Static | BindingFlags.NonPublic).MakeGenericMethod(typeof(int));
+            int attempts = 0;
+            var waits = new List<int>();
+            Func<int> temporaryTimeout = () => { attempts++; if (attempts < 3) throw new System.Threading.Tasks.TaskCanceledException(); return 42; };
+            int recovered = (int)executeRead.Invoke(null, new object[] { temporaryTimeout, new Action<int>(waits.Add) });
+            if (recovered != 42 || attempts != 3 || !waits.SequenceEqual(new[] { 500, 1500 })) throw new Exception("조회 재시도 복구 오류");
+            attempts = 0;
+            Func<int> persistentTimeout = () => { attempts++; throw new System.Threading.Tasks.TaskCanceledException(); };
+            bool boundedFailure = false;
+            try { executeRead.Invoke(null, new object[] { persistentTimeout, new Action<int>(ms => { }) }); }
+            catch (TargetInvocationException error) { boundedFailure = error.InnerException is System.IO.IOException; }
+            if (!boundedFailure || attempts != 3) throw new Exception("조회 시간 초과 횟수 제한 오류");
+            attempts = 0;
+            Func<int> invalidData = () => { attempts++; throw new FormatException("잘못된 데이터"); };
+            try { executeRead.Invoke(null, new object[] { invalidData, new Action<int>(ms => { }) }); }
+            catch (TargetInvocationException error) { if (!(error.InnerException is FormatException)) throw; }
+            if (attempts != 1) throw new Exception("데이터 오류 재시도 금지 오류");
+            var retainedQuizzes = Database.Instance.CommonSenses;
+            var retainedCommands = Database.Instance.Keywords;
+            var canceled = Activator.CreateInstance(sourceType);
+            sourceType.GetMethod("SetCanceled", Type.EmptyTypes).Invoke(canceled, null);
+            dbType.GetField("contentRefresh", flags).SetValue(Database.Instance, sourceType.GetProperty("Task").GetValue(canceled, null));
+            apply.Invoke(Database.Instance, null);
+            if (!Database.Instance.ContentRefreshError.Contains("시간 초과") || !object.ReferenceEquals(retainedQuizzes, Database.Instance.CommonSenses) || !object.ReferenceEquals(retainedCommands, Database.Instance.Keywords))
+                throw new Exception("취소된 갱신의 상태 표시·캐시 유지 오류");
+            var handled = Activator.CreateInstance(refreshType, true);
+            refreshType.GetField("Error", flags).SetValue(handled, "콘텐츠 갱신 실패: 시험 시간 초과");
+            var handledSource = Activator.CreateInstance(sourceType);
+            sourceType.GetMethod("SetResult").Invoke(handledSource, new[] { handled });
+            dbType.GetField("contentRefresh", flags).SetValue(Database.Instance, sourceType.GetProperty("Task").GetValue(handledSource, null));
+            apply.Invoke(Database.Instance, null);
+            if (!Database.Instance.ContentRefreshError.Contains("시험 시간 초과") || !object.ReferenceEquals(retainedQuizzes, Database.Instance.CommonSenses))
+                throw new Exception("처리된 통신 실패가 기존 캐시를 덮어씀");
+            Console.WriteLine("PASS: timeout recovery, bounded retries, no retry on invalid data, cancellation/error preserves cache");
             Console.WriteLine("PASS: background refresh apply, active quiz protection, failed refresh preserves cache");
             Console.WriteLine("PASS: Bot command queue, mention IDs, quiz, contribution, room isolation (no sends)");
             return 0;

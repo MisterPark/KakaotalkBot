@@ -139,7 +139,6 @@ namespace KakaotalkBot
 
         private void UpdateInternally()
         {
-            CompleteQuizRegistration();
             Database.Instance.ApplyContentRefresh();
             Database.Instance.MaintainMonth();
             ProcessDatabaseMessages();
@@ -192,6 +191,7 @@ namespace KakaotalkBot
         public void Stop()
         {
             isBotRunning = false;
+            Database.Instance.BeginContentRefresh();
             if (receiver != null) receiver.Dispose();
             Reset();
             try { FlushPendingUserChanges(Database.Instance.UpdateUserTable); }
@@ -645,8 +645,6 @@ namespace KakaotalkBot
                 if (!Database.Instance.Operators.CheckQuizIssuer(command.ChatId, command.AuthorId,
                     BotIdentity.SuperUserId, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), command.ReceivedAt, out error))
                 { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, error); return; }
-                if (quizRegistration != null)
-                { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "이전 문제 변경을 처리 중입니다. 잠시 후 다시 시도해 주세요."); return; }
                 try
                 {
                     if (operation == "/퀴즈삭제")
@@ -654,21 +652,21 @@ namespace KakaotalkBot
                         string category, question;
                         if (!Quiz.TryParseDeletion(command.Keyword, out category, out question))
                         { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, Quiz.DeletionHelp); return; }
-                        quizRegistration = Database.Instance.BeginQuizDeletion(category, question);
-                        quizDeletionCategory = category; quizDeletionQuestion = question;
+                        bool ended = Database.Instance.DeleteQuiz(category, question);
+                        if (ended) quizAnswers.Clear();
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "문제를 삭제했습니다." + (ended ? " 진행 중이던 해당 퀴즈도 종료했습니다." : ""));
                     }
                     else
                     {
                         Quiz quiz;
                         if (!Quiz.TryParseRegistration(command.Keyword, out quiz, out error))
                         { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, error); return; }
-                        quizRegistration = Database.Instance.BeginQuizRegistration(quiz);
-                        quizDeletionCategory = quizDeletionQuestion = null;
+                        Database.Instance.RegisterQuiz(quiz);
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "문제를 등록했습니다.");
                     }
                 }
                 catch (InvalidOperationException ex)
                 { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, ex.Message); return; }
-                quizRegistrationRoom = command.ChatId;
             }
             else if (command.Keyword == "/암호검증")
             {
@@ -701,36 +699,6 @@ namespace KakaotalkBot
                 }
             }
 
-        }
-
-        private System.Threading.Tasks.Task quizRegistration;
-        private long quizRegistrationRoom;
-        private string quizDeletionCategory, quizDeletionQuestion;
-
-        private void CompleteQuizRegistration()
-        {
-            if (quizRegistration == null || !quizRegistration.IsCompleted) return;
-            var completed = quizRegistration;
-            quizRegistration = null;
-            string result;
-            if (completed.IsFaulted || completed.IsCanceled)
-            {
-                if (completed.IsFaulted) LastProcessingError = "퀴즈 변경 확인 실패: " + completed.Exception.GetBaseException().Message;
-                // 통신이 끊겨도 서버에 저장됐을 수 있으므로 자동 재전송하지 않습니다.
-                var reason = completed.IsFaulted ? completed.Exception.GetBaseException() : null;
-                result = reason is InvalidOperationException ? reason.Message :
-                    "문제 변경 결과를 확인하지 못했습니다. 시트를 확인한 뒤 다시 시도해 주세요.";
-            }
-            else if (quizDeletionCategory != null)
-            {
-                bool ended = Database.Instance.ApplyQuizDeletion(quizDeletionCategory, quizDeletionQuestion);
-                if (ended) quizAnswers.Clear();
-                result = "문제를 삭제했습니다." + (ended ? " 진행 중이던 해당 퀴즈도 종료했습니다." : "");
-            }
-            else result = "문제를 등록했습니다. 문제 목록을 갱신합니다. 진행 중인 퀴즈가 있다면 종료 후 반영됩니다.";
-            Database.Instance.RefreshRegisteredQuiz();
-            if (SelectedRoom != null && SelectedRoom.ChatId == quizRegistrationRoom)
-                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, result);
         }
 
         private void ProcessCommonSense(string category = null)
