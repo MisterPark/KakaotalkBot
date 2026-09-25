@@ -290,7 +290,7 @@ namespace KakaotalkBot
             else
             {
                 ProcessQuizAnswer(chat.AuthorId, chat.Nickname, message, chat.LogId);
-                if (message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || message == "/퀴즈" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
+                if (message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || Quiz.IsQuizCommand(message) || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
                     OperatorCommandPolicy.Name(message) == "/월간랭킹" || OperatorCommandPolicy.Name(message) == "/채팅랭킹" ||
                     OperatorCommandPolicy.Name(message) == "/네임드" || OperatorCommandPolicy.Name(message) == "/레벨랭킹" || OperatorCommandPolicy.Name(message) == "/랭킹" || Database.Instance.Keywords.Any(k => message.StartsWith(k)))
                     ProcessKeyword(chat.Nickname, message, chat.AuthorId, chat.LogId, chat.ChatId, chat.Mentions);
@@ -630,9 +630,13 @@ namespace KakaotalkBot
             {
                 WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"{News.PoliticsTop6}");
             }
-            else if (command.Keyword == "/상식퀴즈")
+            else if (Quiz.IsQuizCommand(command.Keyword))
             {
-                ProcessCommonSense();
+                if (command.Keyword == "/퀴즈목록")
+                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, Database.Instance.GetQuizCategoryHelp());
+                else
+                    ProcessCommonSense(command.Keyword == "/상식퀴즈" || command.Keyword == "/퀴즈" ? null :
+                        command.Keyword.Substring(1, command.Keyword.Length - 3).Trim());
             }
             else if (command.Keyword == "/암호검증")
             {
@@ -667,15 +671,16 @@ namespace KakaotalkBot
 
         }
 
-        private void ProcessCommonSense()
+        private void ProcessCommonSense(string category = null)
         {
             string answer = Database.Instance.GetCommonSenseText();
             if (string.IsNullOrEmpty(answer))
             {
-                //double left = soliloquyTimer.TimeLeft * 0.001;
-
-                //WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"다음 퀴즈를 준비하고 있습니다.\n남은 시간: {left}초");
-                Database.Instance.SetNextCommonSense();
+                if (!Database.Instance.TrySetNextCommonSense(category))
+                {
+                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "해당 분류에 출제할 문제가 없습니다.\n" + Database.Instance.GetQuizCategoryHelp());
+                    return;
+                }
                 answer = Database.Instance.GetCommonSenseText();
                 WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"{answer}");
                 soliloquyTimer.Reset();

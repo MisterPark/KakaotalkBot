@@ -36,6 +36,7 @@ namespace KakaotalkBot
             internal GoogleSheetHelper Reader;
             internal List<List<string>> Commands;
             internal List<Quiz> Quizzes;
+            internal Dictionary<string, List<int>> QuizCategories;
             internal List<Topic> Topics;
         }
 
@@ -47,6 +48,7 @@ namespace KakaotalkBot
             {
                 var result = new ContentRefresh { Reader = reader, Commands = reader.ReadCommandTables() };
                 result.Quizzes = reader.ReadAllFromSheet("상식퀴즈").Skip(1).Select(Quiz.ToCommonSense).ToList();
+                result.QuizCategories = Quiz.BuildCategoryIndex(result.Quizzes);
                 result.Topics = reader.ReadAllFromSheet("Topic").Skip(1).Select(Topic.ToTopic).ToList();
                 if (result.Quizzes.Count == 0 || result.Topics.Count == 0) throw new InvalidOperationException("퀴즈·주제 갱신 결과가 비어 있어 기존 내용을 유지합니다.");
                 return result;
@@ -68,7 +70,7 @@ namespace KakaotalkBot
             }
             // 진행 중인 퀴즈의 인덱스가 다른 문제를 가리키지 않도록 종료 후 교체합니다.
             if (pendingContent != null && currentAnswerIndex < 0)
-            { commonSenses = pendingContent.Quizzes; pendingContent = null; }
+            { commonSenses = pendingContent.Quizzes; quizCategories = pendingContent.QuizCategories ?? Quiz.BuildCategoryIndex(commonSenses); pendingContent = null; }
         }
         private List<string> keywords = new List<string>();
         private List<List<string>> commands = new List<List<string>>();
@@ -99,6 +101,7 @@ namespace KakaotalkBot
         private readonly HashSet<Tuple<long, long, long>> departureEvents = new HashSet<Tuple<long, long, long>>();
         private readonly Queue<Tuple<long, long, long>> departureEventOrder = new Queue<Tuple<long, long, long>>();
         private List<Quiz> commonSenses = new List<Quiz>();
+        private Dictionary<string, List<int>> quizCategories = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         private List<Topic> topics = new List<Topic>();
 
         private RandomNumberGenerator random;
@@ -158,6 +161,7 @@ namespace KakaotalkBot
             }
             catch (Exception error) { UserStorageReady = false; UserStorageError = "사용자 DB 읽기 실패: " + error.Message; throw; }
             commonSenses = GetCommonSenses();
+            quizCategories = Quiz.BuildCategoryIndex(commonSenses);
             topics = GetTopic();
         }
 
@@ -196,6 +200,7 @@ namespace KakaotalkBot
             if (list != null && list.Count != 0)
             {
                 commonSenses = list;
+                quizCategories = Quiz.BuildCategoryIndex(commonSenses);
 
             }
         }
@@ -549,6 +554,7 @@ namespace KakaotalkBot
         {
             text = text.Replace("/네임드 [페이지]", "/네임드")
                 .Replace("네임드는 페이지당 20명입니다.", "네임드는 전체 목록을 표시합니다.");
+            if (!text.Contains("/퀴즈목록")) text += "\n/퀴즈 또는 /상식퀴즈 — 전체 출제\n/분류명퀴즈 — 해당 분류 출제 (예: /과학퀴즈, /경제퀴즈)\n/퀴즈목록 — 가능한 분류";
             if (!text.Contains("/퀘스트")) text += "\n/퀘스트 또는 /일퀘 — 오늘의 진행 상황·자동 지급 보상";
             if (!text.Contains("/레벨랭킹")) text += "\n/레벨랭킹";
             if (!text.Contains("/네임드")) text += "\n/네임드";
@@ -584,12 +590,32 @@ namespace KakaotalkBot
             return null;
         }
 
+        public string GetQuizCategoryHelp()
+        {
+            return "[퀴즈 분류]\n/퀴즈 · /상식퀴즈 — 전체 무작위\n" +
+                string.Join("\n", quizCategories.OrderBy(p => p.Key).Select(p => "/" + p.Key + "퀴즈 — " + p.Value.Count + "문제"));
+        }
+
         public void SetNextCommonSense()
         {
-            random.GetBytes(randomBytes);
-            int randomValue = BitConverter.ToInt32(randomBytes, 0);
-            randomValue = Math.Abs(randomValue);
-            currentAnswerIndex = randomValue % commonSenses.Count;
+            TrySetNextCommonSense(null);
+        }
+
+        public bool TrySetNextCommonSense(string category)
+        {
+            // 진행 중인 정답과 보상을 보호합니다.
+            if (currentAnswerIndex >= 0) return false;
+            List<int> indexes = null;
+            if (category != null && !quizCategories.TryGetValue(category.Trim(), out indexes)) return false;
+            int count = indexes == null ? commonSenses.Count : indexes.Count;
+            if (count == 0) return false;
+            // 음수 오버플로와 나머지 연산의 선택 편향을 피합니다.
+            uint value;
+            ulong limit = (1UL << 32) / (uint)count * (uint)count;
+            do { random.GetBytes(randomBytes); value = BitConverter.ToUInt32(randomBytes, 0); } while (value >= limit);
+            int selected = (int)(value % (uint)count);
+            currentAnswerIndex = indexes == null ? selected : indexes[selected];
+            return true;
         }
 
         public void ResetCommonSense()

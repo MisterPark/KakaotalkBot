@@ -172,7 +172,10 @@ internal static class BotCommandBridgeTests
             deliver(10, 3003, "/출석", null);
             deliver(10, 3004, "/출석체크", null);
             deliver(10, 3005, "/퀴즈", null);
-            if (!commands.Select(c => c.Keyword).SequenceEqual(new[] { "/퀘스트", "/일퀘", "/출첵", "/출첵", "/상식퀴즈" }))
+            deliver(10, 3006, "/과학퀴즈", null);
+            deliver(10, 3007, "/경제퀴즈", null);
+            deliver(10, 3008, "/퀴즈목록", null);
+            if (!commands.Select(c => c.Keyword).SequenceEqual(new[] { "/퀘스트", "/일퀘", "/출첵", "/출첵", "/상식퀴즈", "/과학퀴즈", "/경제퀴즈", "/퀴즈목록" }))
                 throw new Exception("퀘스트 조회·출석·퀴즈 별칭 수신 연결 오류");
             StaticVariable.AutoReboot = previousAuto;
             Console.WriteLine("PASS: periodic room recycle, draft deferral, retry, queue and receiver state preserved (no native input)");
@@ -180,7 +183,7 @@ internal static class BotCommandBridgeTests
             var refreshType = dbType.GetNestedType("ContentRefresh", BindingFlags.NonPublic);
             var snapshot = Activator.CreateInstance(refreshType, true);
             var flags = BindingFlags.Instance | BindingFlags.NonPublic;
-            var incomingQuizzes = new List<Quiz> { new Quiz { Question = "새 문제" } };
+            var incomingQuizzes = new List<Quiz> { new Quiz { Question = "새 문제", Category = "과학" }, new Quiz { Question = "경제 문제", Category = "경제" }, new Quiz { Question = "과학 문제", Category = " 과학 " } };
             refreshType.GetField("Commands", flags).SetValue(snapshot, new List<List<string>> { new List<string> { "/갱신시험", "새 응답" } });
             refreshType.GetField("Quizzes", flags).SetValue(snapshot, incomingQuizzes);
             refreshType.GetField("Topics", flags).SetValue(snapshot, new List<Topic> { new Topic { Title = "새 주제" } });
@@ -203,6 +206,24 @@ internal static class BotCommandBridgeTests
             apply.Invoke(Database.Instance, null);
             if (!Database.Instance.ContentRefreshError.Contains("시험") || !object.ReferenceEquals(incomingQuizzes, Database.Instance.CommonSenses))
                 throw new Exception("갱신 실패 시 기존 데이터 유지 오류");
+            dbType.GetField("random", flags).SetValue(Database.Instance, System.Security.Cryptography.RandomNumberGenerator.Create());
+            for (int i = 0; i < 200; i++)
+            {
+                Database.Instance.ResetCommonSense();
+                string category = i % 2 == 0 ? "과학" : "경제";
+                if (!Database.Instance.TrySetNextCommonSense(category) || Database.Instance.GetCurrentQuiz().Category.Trim() != category)
+                    throw new Exception("분류별 출제 오류");
+                var current = Database.Instance.GetCurrentQuiz();
+                if (Database.Instance.TrySetNextCommonSense("경제") || !object.ReferenceEquals(current, Database.Instance.GetCurrentQuiz()))
+                    throw new Exception("진행 중인 문제 덮어쓰기 오류");
+            }
+            Database.Instance.ResetCommonSense();
+            if (Database.Instance.TrySetNextCommonSense("없는분류") || Database.Instance.GetCurrentQuiz() != null)
+                throw new Exception("없는 분류에서 전체 문제 출제 오류");
+            if (!Database.Instance.GetQuizCategoryHelp().Contains("/과학퀴즈 — 2문제")) throw new Exception("분류 목록 오류");
+            if (!Database.Instance.TrySetNextCommonSense(null)) throw new Exception("전체 출제 오류");
+            Database.Instance.ResetCommonSense();
+            Console.WriteLine("PASS: category commands, category-only selection, active quiz protection, unknown category and full pool");
             Console.WriteLine("PASS: background refresh apply, active quiz protection, failed refresh preserves cache");
             Console.WriteLine("PASS: Bot command queue, mention IDs, quiz, contribution, room isolation (no sends)");
             return 0;
