@@ -15,6 +15,7 @@ namespace KakaotalkBot
         }
         public struct QuizAnswer
         {
+            public long LogId;
             public long AuthorId;
             public string Nickname;
             public string Answer;
@@ -54,6 +55,7 @@ namespace KakaotalkBot
         private bool updating;
         private DateTime nextProcessingAttempt;
         private bool departureSavePending;
+        private Queue<string> questNotices = new Queue<string>();
         public bool HasPendingUserSave { get { return departureSavePending || Database.Instance.HasPendingActivity; } }
         public string LastSendError { get; private set; }
         public string LastProcessingError { get; private set; }
@@ -200,6 +202,7 @@ namespace KakaotalkBot
             chatLog = new List<string>();
 
             commands.Clear();
+            if (questNotices != null) questNotices.Clear();
             quizAnswers.Clear();
             isCorrect = false;
             passwordRequests.Clear();
@@ -219,6 +222,8 @@ namespace KakaotalkBot
             }
             // 입퇴장 응답을 보내기 전에 같은 수신 묶음의 횟수를 저장한다. 60초 주기를 기다리지 않는다.
             if (departureSavePending) FlushPendingUserChanges(Database.Instance.UpdateUserTable);
+            while (questNotices != null && questNotices.Count > 0)
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, questNotices.Dequeue());
             if (changed && Form1.Instance != null) Form1.Instance.UpdateChatLog(string.Join("\r\n", chatLog));
         }
 
@@ -264,7 +269,15 @@ namespace KakaotalkBot
                 ChatEventDiagnostics.Write("counted", chat);
             }
             var incomingUser = Database.Instance.AddUser(chat.AuthorId, chat.Nickname);
+            int beforeQuestPoints = incomingUser.Point;
             if (Database.Instance.ObserveMessage(chat)) departureSavePending = true;
+            if (incomingUser.Point > beforeQuestPoints)
+            {
+                if (questNotices == null) questNotices = new Queue<string>();
+                questNotices.Enqueue("[일일 퀘스트 완료]\n" + Database.Instance.ChatUserName(chat.ChatId, chat.AuthorId, chat.Nickname) +
+                    "님 · 대화 참여" + (incomingUser.Point - beforeQuestPoints > 10 ? " 및 일일 완주" : "") +
+                    "\n+" + (incomingUser.Point - beforeQuestPoints) + "포인트\n현재 포인트: " + incomingUser.Point);
+            }
             // 봇 계정도 등록·방별 상태를 저장하되 자기 출력은 명령과 퀴즈에 넣지 않습니다.
             if (chat.IsOwn) return false;
             if (string.IsNullOrWhiteSpace(chat.Nickname)) chat.Nickname = Database.Instance.ChatUserName(chat.ChatId, chat.AuthorId);
@@ -275,8 +288,8 @@ namespace KakaotalkBot
                 ProcessKeyword(chat.Nickname, chat.EventCommand, chat.AuthorId, chat.LogId, chat.ChatId);
             else
             {
-                ProcessQuizAnswer(chat.AuthorId, chat.Nickname, message);
-                if (message == "/출석" || message == "/출석체크" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
+                ProcessQuizAnswer(chat.AuthorId, chat.Nickname, message, chat.LogId);
+                if (message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
                     OperatorCommandPolicy.Name(message) == "/월간랭킹" || OperatorCommandPolicy.Name(message) == "/채팅랭킹" ||
                     OperatorCommandPolicy.Name(message) == "/네임드" || OperatorCommandPolicy.Name(message) == "/레벨랭킹" || OperatorCommandPolicy.Name(message) == "/랭킹" || Database.Instance.Keywords.Any(k => message.StartsWith(k)))
                     ProcessKeyword(chat.Nickname, message, chat.AuthorId, chat.LogId, chat.ChatId, chat.Mentions);
@@ -300,10 +313,11 @@ namespace KakaotalkBot
             commands.Enqueue(command);
         }
 
-        private void ProcessQuizAnswer(long authorId, string nickname, string answer)
+        private void ProcessQuizAnswer(long authorId, string nickname, string answer, long logId)
         {
             QuizAnswer quizAnswer = new QuizAnswer();
             quizAnswer.AuthorId = authorId;
+            quizAnswer.LogId = logId;
             quizAnswer.Nickname = nickname;
             quizAnswer.Answer = answer;
             quizAnswers.Enqueue(quizAnswer);
@@ -365,6 +379,12 @@ namespace KakaotalkBot
                 { LastProcessingError = "형식: /이력 @유저 또는 /메모 @유저 내용 (실제 멘션 필요)"; return; }
                 if (operation == "/메모") Database.Instance.AddOperatorMemo(command.ChatId, command.AuthorId, target, body, command.LogId);
                 if (operation == "/이력" && OperatorHistoryRequested != null) OperatorHistoryRequested(command, target);
+                return;
+            }
+            if (command.Keyword == "/퀘스트" || command.Keyword == "/일퀘")
+            {
+                Database.Instance.UpdateUserTable();
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, Database.Instance.Quests.Status(command.AuthorId, DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
                 return;
             }
             if (operation == "/네임드")
@@ -438,6 +458,9 @@ namespace KakaotalkBot
                     {
                         if (SelectedRoom == null || command.ChatId != SelectedRoom.ChatId || command.AuthorId <= 0)
                             throw new InvalidOperationException("입장 명령의 채팅방 또는 작성자 ID가 올바르지 않습니다.");
+                        var enteringUser = Database.Instance.AddUser(command.AuthorId, command.Nickname);
+                        parsedAnswer = parsedAnswer.TrimEnd() + "\n\n칭호: " + Database.Instance.NamedTitles(command.ChatId, command.AuthorId) +
+                            "\n퇴장 횟수: " + enteringUser.LeaveCount + "회";
                         WindowsMacro.Instance.SendMentionToChatroom(TargetWindow, command.AuthorId, command.Nickname, parsedAnswer, SelectedRoom.ProcessId, Database.Instance.MentionFallbackNames(command.ChatId, command.AuthorId));
                     }
                     catch (Exception error)
@@ -466,13 +489,16 @@ namespace KakaotalkBot
                 {
                     if (Database.Instance.CheckAttendance(command.AuthorId, command.Nickname))
                     {
+                        Database.Instance.UpdateUserTable();
                         WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"이미 출석한 유저입니다.");
                     }
                     else
                     {
                         if (Database.Instance.FindUser(command.AuthorId, out User user))
                         {
-                            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{command.Nickname}]님이 {answer}\n+10포인트\n(현재 포인트: {user.Point})");
+                            string questReward = Database.Instance.Quests.Complete(user, "attendance", command.ChatId, command.LogId, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                            Database.Instance.UpdateUserTable();
+                            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{command.Nickname}]님이 {answer}\n+10포인트\n{questReward}\n(현재 포인트: {user.Point})");
                         }
                         else
                         {
@@ -765,7 +791,11 @@ namespace KakaotalkBot
                         }
 
                         a.Point += point;
-                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"💡정답자: {quizAnswer.Nickname}\n💬정답: {quiz.Answer}\n📜해설: {quiz.Explanation}\n+{point} 포인트 득점!!👍\n 현재 포인트: {a.Point}");
+                        string questReward = Database.Instance.Quests.Complete(a, "quiz", SelectedRoom.ChatId, quizAnswer.LogId, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                        // 저장 실패 시에도 같은 퀴즈를 다시 지급하지 않고 변경 내용을 다음 저장에서 재시도합니다.
+                        Database.Instance.CurrentAnswerIndex = -1;
+                        Database.Instance.UpdateUserTable();
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"💡정답자: {quizAnswer.Nickname}\n💬정답: {quiz.Answer}\n📜해설: {quiz.Explanation}\n+{point} 포인트 득점!!👍\n{questReward}\n현재 포인트: {a.Point}");
                     }
                     else
                     {

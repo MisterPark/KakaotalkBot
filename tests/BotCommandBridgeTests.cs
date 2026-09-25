@@ -167,6 +167,12 @@ internal static class BotCommandBridgeTests
                 throw new Exception("재열기 성공 후 상태 유지 실패");
             maintain.Invoke(bot, new object[] { now.AddHours(8).AddMinutes(1), recycle });
             if (recycled != 1) throw new Exception("성공 후 4시간 주기 오류");
+            deliver(10, 3001, "/퀘스트", null);
+            deliver(10, 3002, "/일퀘", null);
+            deliver(10, 3003, "/출석", null);
+            deliver(10, 3004, "/출석체크", null);
+            if (!commands.Select(c => c.Keyword).SequenceEqual(new[] { "/퀘스트", "/일퀘", "/출첵", "/출첵" }))
+                throw new Exception("퀘스트 조회·출석 별칭 수신 연결 오류");
             StaticVariable.AutoReboot = previousAuto;
             Console.WriteLine("PASS: periodic room recycle, draft deferral, retry, queue and receiver state preserved (no native input)");
             Console.WriteLine("PASS: Bot command queue, mention IDs, quiz, contribution, room isolation (no sends)");

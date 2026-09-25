@@ -34,8 +34,9 @@ namespace KakaotalkBot
         internal RoomOperatorStore Operators = new RoomOperatorStore();
         internal OperationsStore Operations = new OperationsStore();
         internal RoomTitleStore Titles = new RoomTitleStore();
-        public bool HasPendingActivity { get { return activity.Dirty || Operators.Dirty || Operations.Dirty || Titles.Dirty; } }
-        internal void ConfirmActivitySaved() { activity.MarkSaved(); Operators.Dirty = false; Operations.Dirty = false; Operations.ResetPending = false; Titles.Dirty = false; }
+        internal DailyQuestStore Quests = new DailyQuestStore();
+        public bool HasPendingActivity { get { return activity.Dirty || Operators.Dirty || Operations.Dirty || Titles.Dirty || Quests.Dirty; } }
+        internal void ConfirmActivitySaved() { activity.MarkSaved(); Operators.Dirty = false; Operations.Dirty = false; Operations.ResetPending = false; Titles.Dirty = false; Quests.Dirty = false; }
         public bool IsRoomOperator(long chatId, long userId)
         { string error; return Operators.Check(chatId, userId, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), out error); }
         public IReadOnlyList<RoomEventRecord> RoomEvents { get { return activity.Events.AsReadOnly(); } }
@@ -103,6 +104,9 @@ namespace KakaotalkBot
                 activity = next; Operators = nextOperators; UserStorageReady = true; UserStorageError = null;
                 Operations = nextOperations;
                 var titles = new RoomTitleStore(); titles.Load(keywordSheet.ReadActivityTable("DB_RoomTitles", RoomTitleStore.Headers)); Titles = titles;
+                var quests = new DailyQuestStore(); quests.Load(keywordSheet.ReadActivityTable("DB_DailyQuests", DailyQuestStore.Headers));
+                if (quests.Rows.Values.Any(r => !ids.Contains(r.UserId))) throw new FormatException("퀘스트 DB에 등록되지 않은 사용자가 있습니다.");
+                Quests = quests;
                 MaintainMonth();
             }
             catch (Exception error) { UserStorageReady = false; UserStorageError = "사용자 DB 읽기 실패: " + error.Message; throw; }
@@ -131,7 +135,7 @@ namespace KakaotalkBot
             if (!UserStorageReady) throw new InvalidOperationException("사용자 DB를 정상적으로 읽기 전에는 저장할 수 없습니다.");
             try
             {
-                keywordSheet.WriteUserData(userTable.Select(user => user.ToRow()).ToList(), activity, Operators, Operations, Titles);
+                keywordSheet.WriteUserData(userTable.Select(user => user.ToRow()).ToList(), activity, Operators, Operations, Titles, Quests);
                 UserStorageError = null;
             }
             catch (Exception error) { UserStorageError = "사용자 DB 저장 실패: " + error.Message; throw; }
@@ -199,10 +203,11 @@ namespace KakaotalkBot
         {
             var user = AddUser(userId, nickname);
             // 봇 재시작이나 출석 표시 초기화 뒤에도 같은 날짜의 보상은 다시 지급하지 않는다.
-            if (user.AttendanceAt.Date == DateTime.Today) { user.TakeAttendance = true; return true; }
+            DateTime today = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(9)).DateTime;
+            if (user.AttendanceAt.Date == today.Date) { user.TakeAttendance = true; return true; }
             int points = checked(user.Point + 10);
             user.TakeAttendance = true;
-            user.AttendanceAt = DateTime.Now;
+            user.AttendanceAt = today;
             user.Point = points;
             return false;
         }
@@ -269,7 +274,8 @@ namespace KakaotalkBot
             // 일반 채팅과 답글에만 경험치를 지급합니다. 명령어·시스템 이벤트는 제외합니다.
             if (!message.IsOwn && !string.IsNullOrWhiteSpace(message.Message) && !message.Message.TrimStart().StartsWith("/"))
                 activity.AwardExperience(user, message.ChatId, message.LogId, message.SendAt);
-            return renamed;
+            bool questChanged = Quests.CountChat(user, message, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            return renamed || questChanged;
         }
 
         internal void ObserveRoster(ChatRosterSnapshot roster)
@@ -489,6 +495,7 @@ namespace KakaotalkBot
         {
             text = text.Replace("/네임드 [페이지]", "/네임드")
                 .Replace("네임드는 페이지당 20명입니다.", "네임드는 전체 목록을 표시합니다.");
+            if (!text.Contains("/퀘스트")) text += "\n/퀘스트 또는 /일퀘 — 오늘의 진행 상황·자동 지급 보상";
             if (!text.Contains("/레벨랭킹")) text += "\n/레벨랭킹";
             if (!text.Contains("/네임드")) text += "\n/네임드";
             if (!text.Contains("/네임드지정")) text += "\n[운영진 전용 · 네임드]\n/네임드지정 @유저 칭호 [기간일]\n예: /네임드지정 @유저 토론왕 30일\n/네임드해제 @유저 칭호";
