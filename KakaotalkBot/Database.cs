@@ -367,18 +367,15 @@ namespace KakaotalkBot
                 (r.ExpiresAt == 0 ? " · 영구" : " · " + OperationsStore.LocalTime(r.ExpiresAt) + " 만료") + ")"));
         }
 
-        public string NamedList(long chat, int page = 1)
+        public string NamedList(long chat)
         {
-            if (page < 1) throw new ArgumentException("페이지는 1 이상이어야 합니다.");
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var groups = Titles.Rows.Values.Where(r => r.ChatId == chat && r.Active(now) &&
                 FindRoomUser(chat, r.UserId) != null && FindRoomUser(chat, r.UserId).IsPresent == true)
                 .GroupBy(r => r.UserId).OrderBy(g => ChatUserName(chat, g.Key)).ThenBy(g => g.Key).ToArray();
-            int pages = Math.Max(1, (groups.Length + 19) / 20);
-            if (page > pages) return "네임드 목록은 " + pages + "페이지까지 있습니다.";
-            return "[현재 방 네임드 · " + page + "/" + pages + "]\n" + (groups.Length == 0 ? "참여 중인 네임드가 없습니다." :
-                string.Join("\n", groups.Skip((page - 1) * 20).Take(20).Select(g => ChatUserName(chat, g.Key) + " · " +
-                    string.Join(" · ", g.Select(r => r.Title).Distinct())))) + "\n※ /네임드 [페이지] · 현재 참여 확인 기준";
+            return "[현재 방 네임드 · " + groups.Length + "명]\n" + (groups.Length == 0 ? "참여 중인 네임드가 없습니다." :
+                string.Join("\n", groups.Select(g => ChatUserName(chat, g.Key) + " · " +
+                    string.Join(" · ", g.Select(r => r.Title).Distinct())))) + "\n※ 현재 참여 확인 기준";
         }
         internal string ChangeNamedTitle(long chat, long author, long userId, long log, string title, int days, bool revoke)
         {
@@ -490,8 +487,10 @@ namespace KakaotalkBot
 
         private static string CompleteCommandHelp(string text)
         {
+            text = text.Replace("/네임드 [페이지]", "/네임드")
+                .Replace("네임드는 페이지당 20명입니다.", "네임드는 전체 목록을 표시합니다.");
             if (!text.Contains("/레벨랭킹")) text += "\n/레벨랭킹";
-            if (!text.Contains("/네임드")) text += "\n/네임드 [페이지]";
+            if (!text.Contains("/네임드")) text += "\n/네임드";
             if (!text.Contains("/네임드지정")) text += "\n[운영진 전용 · 네임드]\n/네임드지정 @유저 칭호 [기간일]\n예: /네임드지정 @유저 토론왕 30일\n/네임드해제 @유저 칭호";
             return text;
         }

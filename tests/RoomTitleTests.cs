@@ -72,8 +72,8 @@ class RoomTitleTests
                 Call(activity, "Observe", 10L, 9000L + i, "방닉" + i.ToString("D2"), true, actual, (long)i, "chat");
                 Call(display, "Grant", 10L, 9000L + i, 7L, (long)i, "정보통", 0, actual);
             }
-            string page1 = Database.Instance.NamedList(10), page2 = Database.Instance.NamedList(10, 2);
-            Check(page1.Contains("방닉20") && !page1.Contains("방닉21") && page2.Contains("방닉21"), "20명 페이지 분리");
+            string page1 = Database.Instance.NamedList(10);
+            Check(page1.Contains("방닉01") && page1.Contains("방닉21") && page1.Contains("21명") && !page1.Contains("페이지"), "20명 초과 전체 목록 표시");
             Check(!page1.Contains("9001") && !page1.Contains("보존이름") && Database.Instance.NamedTitles(20, 9001) == "없음", "ID 비공개·방별 이름 격리");
             Call(activity, "Observe", 10L, 9001L, "방닉01", false, actual + 1, 100L, "event");
             Check(!Database.Instance.NamedList(10).Contains("방닉01") && Database.Instance.NamedTitles(10, 9001) == "정보통", "퇴장자 목록 제외·칭호 보존");

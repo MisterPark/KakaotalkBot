@@ -368,10 +368,9 @@ namespace KakaotalkBot
             }
             if (operation == "/네임드")
             {
-                int page = 1; string argument = command.Keyword.Substring(operation.Length).Trim();
-                if (argument.Length > 0 && (!int.TryParse(argument, out page) || page < 1))
-                { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "형식: /네임드 [페이지]"); return; }
-                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, Database.Instance.NamedList(command.ChatId, page)); return;
+                if (command.Keyword.Substring(operation.Length).Trim().Length != 0)
+                { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "형식: /네임드 (전체 목록 표시)"); return; }
+                WindowsMacro.Instance.SendTextToChatroom(TargetWindow, FoldChatOutput(Database.Instance.NamedList(command.ChatId))); return;
             }
             if (operation == "/네임드지정" || operation == "/네임드해제")
             {
