@@ -120,6 +120,7 @@
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
     <Compile Include="GoogleSheetHelper.cs" />
+    <Compile Include="BotIdentity.cs" />
     <Compile Include="KakaoTalkDecryptor.cs" />
     <Compile Include="ChatSqlite.cs" />
     <Compile Include="ChatDatabaseSnapshot.cs" />
@@ -172,6 +173,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <Content Include="BotIdentity.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\Image1.bmp" />

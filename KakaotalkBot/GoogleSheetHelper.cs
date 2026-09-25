@@ -22,6 +22,27 @@ namespace KakaotalkBot
         private object lockObject = new object();
 
         private SheetsService service;
+        private BotIdentity identity;
+        private bool identityVerified;
+        private BotIdentity Identity
+        {
+            get
+            {
+                if (identity == null) identity = BotIdentity.Load(sheetId);
+                if (!identityVerified)
+                {
+                    var marker = GetSheetsService().Spreadsheets.Values.Get(sheetId, "'DB_Identity'!A1:B2").Execute().Values;
+                    if (marker == null || marker.Count != 2 || marker[1].Count != 2 || Convert.ToString(marker[1][0]) != "1" || Convert.ToString(marker[1][1]) != identity.KeyCheck)
+                        throw new InvalidDataException("새 DB의 고정 ID 키 확인에 실패했습니다. 저장하지 않습니다.");
+                    identityVerified = true;
+                }
+                return identity;
+            }
+        }
+        private IList<IList<object>> DecodeRows(string title, IList<IList<object>> rows)
+        { return Identity.Transform(title, rows, false, true); }
+        private IList<IList<object>> EncodeRows(string title, IList<IList<object>> rows)
+        { return Identity.Transform(title, rows, true, false); }
 
         private static readonly string[] UserHeaders =
             { "nickname", "take_attendance", "attendance_at", "point", "popularity", "password", "contribution", "user_id", "leave_count", "kick_count", "experience", "level" };
@@ -33,7 +54,7 @@ namespace KakaotalkBot
             {
                 var request = GetSheetsService().Spreadsheets.Values.Get(sheetId, "'" + Database.UserSheetName + "'!A1:L");
                 request.ValueRenderOption = SpreadsheetsResource.ValuesResource.GetRequest.ValueRenderOptionEnum.UNFORMATTEDVALUE;
-                return ParseUserRows(request.Execute().Values);
+                return ParseUserRows(DecodeRows(Database.UserSheetName, request.Execute().Values));
             }
         }
 
@@ -68,7 +89,7 @@ namespace KakaotalkBot
                 // 헤더와 데이터 형식을 먼저 검증하고, 실패는 호출자에게 전달한다.
                 ParseUserRows(new List<IList<object>> { UserHeaders.Cast<object>().ToList() }.Concat(users).ToList());
                 var api = GetSheetsService();
-                ParseUserRows(api.Spreadsheets.Values.Get(sheetId, "'" + Database.UserSheetName + "'!A1:L1").Execute().Values);
+                ParseUserRows(DecodeRows(Database.UserSheetName, api.Spreadsheets.Values.Get(sheetId, "'" + Database.UserSheetName + "'!A1:L1").Execute().Values));
                 var metadataRequest = api.Spreadsheets.Get(sheetId);
                 metadataRequest.Fields = "sheets.properties";
                 var metadata = metadataRequest.Execute();
@@ -83,7 +104,7 @@ namespace KakaotalkBot
                     if (required > count) extensions.Add(new Request { AppendDimension = new AppendDimensionRequest {
                         SheetId = sheet.Properties.SheetId, Dimension = "ROWS", Length = required - count } });
                     ranges.Add(new ValueRange { Range = "'" + title + "'!A" + first + ":" + (char)('A' + columns - 1) + required,
-                        Values = rows.Cast<IList<object>>().ToList() });
+                        Values = EncodeRows(title, rows.Cast<IList<object>>().ToList()) });
                 };
                 add(Database.UserSheetName, 2, users, 12);
                 if (operations != null) add("DB_Operations", 2, operations.ToRows(), 3);
@@ -118,7 +139,7 @@ namespace KakaotalkBot
                 var sheets = query.Execute().Sheets;
                 var user = sheets.Single(s => s.Properties.Title == Database.UserSheetName);
                 var header = api.Spreadsheets.Values.Get(sheetId, "'DB_UserId'!A1:J1").Execute().Values;
-                ParseUserRows(header);
+                ParseUserRows(DecodeRows(Database.UserSheetName, header));
                 var requests = new List<Request>();
                 if (user.Properties.GridProperties.ColumnCount < 12) requests.Add(new Request { AppendDimension = new AppendDimensionRequest {
                     SheetId = user.Properties.SheetId, Dimension = "COLUMNS", Length = 12 - user.Properties.GridProperties.ColumnCount } });
@@ -138,7 +159,7 @@ namespace KakaotalkBot
                         // 생성과 헤더를 한 요청에 묶어 중간 실패로 빈 탭만 남지 않게 합니다.
                         requests.Add(new Request { UpdateCells = new UpdateCellsRequest { Start = new GridCoordinate { SheetId = id, RowIndex = 0, ColumnIndex = 0 },
                             Rows = new List<RowData> { new RowData { Values = definition.Value.Select(h => new CellData {
-                                UserEnteredValue = new ExtendedValue { StringValue = h } }).ToList() } }, Fields = "userEnteredValue" } });
+                                UserEnteredValue = new ExtendedValue { StringValue = h == "user_id" ? "bot_user_id" : h } }).ToList() } }, Fields = "userEnteredValue" } });
                     }
                 if (requests.Count > 0) api.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest { Requests = requests }, sheetId).Execute();
                 var extra = api.Spreadsheets.Values.Get(sheetId, "'DB_UserId'!K1:L1").Execute().Values;
@@ -150,7 +171,7 @@ namespace KakaotalkBot
                 {
                     // 기존 탭은 빈 표로 덮어쓰지 않고 헤더를 검증합니다.
                     if (sheets.Any(s => s.Properties.Title == definition.Key)) ReadActivityTable(definition.Key, definition.Value);
-                    else headers.Add(new ValueRange { Range = "'" + definition.Key + "'!A1", Values = new List<IList<object>> { definition.Value.Cast<object>().ToList() } });
+                    else headers.Add(new ValueRange { Range = "'" + definition.Key + "'!A1", Values = new List<IList<object>> { definition.Value.Select(h => (object)(h == "user_id" ? "bot_user_id" : h)).ToList() } });
                 }
                 if (headers.Count > 0) api.Spreadsheets.Values.BatchUpdate(new BatchUpdateValuesRequest { ValueInputOption = "RAW", Data = headers }, sheetId).Execute();
             }
@@ -160,7 +181,7 @@ namespace KakaotalkBot
         {
             var request = GetSheetsService().Spreadsheets.Values.Get(sheetId, "'" + title + "'!A1:" + (char)('A' + headers.Length - 1));
             request.ValueRenderOption = SpreadsheetsResource.ValuesResource.GetRequest.ValueRenderOptionEnum.UNFORMATTEDVALUE;
-            var values = request.Execute().Values;
+            var values = DecodeRows(title, request.Execute().Values);
             if (values == null || values.Count == 0 || !values[0].Select(Convert.ToString).SequenceEqual(headers))
                 throw new FormatException(title + " 헤더가 잘못되었습니다.");
             var result = new List<List<string>>();
@@ -221,10 +242,14 @@ namespace KakaotalkBot
                     credential = GoogleCredential.FromStream(stream).CreateScoped(Scopes);
                 }
 
+                // 셀의 ISO 날짜 문자열을 DateTime으로 추측 변환하면 재저장할 때 원문이 바뀝니다.
+                var jsonSettings = Google.Apis.Json.NewtonsoftJsonSerializer.CreateDefaultSettings();
+                jsonSettings.DateParseHandling = Newtonsoft.Json.DateParseHandling.None;
                 service = new SheetsService(new BaseClientService.Initializer()
                 {
                     HttpClientInitializer = credential,
                     ApplicationName = applicationName,
+                    Serializer = new Google.Apis.Json.NewtonsoftJsonSerializer(jsonSettings),
                 });
             }
 
@@ -233,6 +258,7 @@ namespace KakaotalkBot
 
         public void WriteToSheet(string sheetName, List<string> messages)
         {
+            RejectUnstructuredUserWrite(sheetName);
             var service = GetSheetsService();
 
             var valueRange = new ValueRange();
@@ -243,7 +269,7 @@ namespace KakaotalkBot
                 values.Add(new List<object> { msg });
             }
 
-            valueRange.Values = values;
+            valueRange.Values = EncodeRows(sheetName, values);
 
             var appendRequest = service.Spreadsheets.Values.Append(valueRange, sheetId, $"{sheetName}!A1");
             appendRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.AppendRequest.ValueInputOptionEnum.RAW;
@@ -252,6 +278,7 @@ namespace KakaotalkBot
 
         public void WriteToSheetAll(string sheetName, List<List<object>> messages)
         {
+            RejectUnstructuredUserWrite(sheetName);
             lock (lockObject)
             {
                 var service = GetSheetsService();
@@ -265,7 +292,7 @@ namespace KakaotalkBot
                     values.Add(msg.Cast<object>().ToList());
                 }
 
-                valueRange.Values = values;
+                valueRange.Values = EncodeRows(sheetName, values);
 
                 var updateRequest = service.Spreadsheets.Values.Update(valueRange, sheetId, sheetName);
                 updateRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
@@ -284,6 +311,13 @@ namespace KakaotalkBot
             
         }
 
+
+        private static void RejectUnstructuredUserWrite(string range)
+        {
+            string title = (range ?? "").Split('!')[0].Trim('\'');
+            if (title.StartsWith("DB_", StringComparison.Ordinal))
+                throw new InvalidOperationException("사용자 DB는 ID 변환을 보장하는 WriteUserData 경로로만 저장할 수 있습니다.");
+        }
 
         public List<List<string>> ReadAllFromSheet(string sheetName)
         {

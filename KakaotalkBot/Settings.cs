@@ -54,14 +54,17 @@ namespace KakaotalkBot
             {
                 var defaultSettings = new Settings
                 {
-                    SpreadsheetId = "<YOUR_SPREADSHEET_ID>",
+                    SpreadsheetId = BotIdentity.ResolveSpreadsheet("<YOUR_SPREADSHEET_ID>"),
                     ApplicationName = "KakaoChatLogger"
                 };
                 Save(defaultSettings);
                 return defaultSettings;
             }
             string json = File.ReadAllText("settings.json");
-            return JsonConvert.DeserializeObject<Settings>(json);
+            var settings = JsonConvert.DeserializeObject<Settings>(json);
+            string migrated = BotIdentity.ResolveSpreadsheet(settings.SpreadsheetId);
+            if (migrated != settings.SpreadsheetId) { settings.SpreadsheetId = migrated; Save(settings); }
+            return settings;
         }
     }
 }
