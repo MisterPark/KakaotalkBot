@@ -290,7 +290,7 @@ namespace KakaotalkBot
             else
             {
                 ProcessQuizAnswer(chat.AuthorId, chat.Nickname, message, chat.LogId);
-                if (message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
+                if (message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || message == "/퀴즈" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
                     OperatorCommandPolicy.Name(message) == "/월간랭킹" || OperatorCommandPolicy.Name(message) == "/채팅랭킹" ||
                     OperatorCommandPolicy.Name(message) == "/네임드" || OperatorCommandPolicy.Name(message) == "/레벨랭킹" || OperatorCommandPolicy.Name(message) == "/랭킹" || Database.Instance.Keywords.Any(k => message.StartsWith(k)))
                     ProcessKeyword(chat.Nickname, message, chat.AuthorId, chat.LogId, chat.ChatId, chat.Mentions);
@@ -304,8 +304,9 @@ namespace KakaotalkBot
 
             Command command = new Command();
             command.Nickname = nickname;
-            // 출석 별칭은 같은 명령으로 처리하여 응답 문구와 중복 출석 검사를 공유합니다.
-            command.Keyword = message == "/출석" || message == "/출석체크" ? "/출첵" : message;
+            // 별칭은 기존 명령으로 처리하여 응답 문구와 보상 처리를 공유합니다.
+            command.Keyword = message == "/출석" || message == "/출석체크" ? "/출첵" :
+                message == "/퀴즈" ? "/상식퀴즈" : message;
             command.AuthorId = authorId;
             command.LogId = logId;
             command.ChatId = chatId;

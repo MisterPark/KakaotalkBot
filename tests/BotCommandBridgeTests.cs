@@ -171,8 +171,9 @@ internal static class BotCommandBridgeTests
             deliver(10, 3002, "/일퀘", null);
             deliver(10, 3003, "/출석", null);
             deliver(10, 3004, "/출석체크", null);
-            if (!commands.Select(c => c.Keyword).SequenceEqual(new[] { "/퀘스트", "/일퀘", "/출첵", "/출첵" }))
-                throw new Exception("퀘스트 조회·출석 별칭 수신 연결 오류");
+            deliver(10, 3005, "/퀴즈", null);
+            if (!commands.Select(c => c.Keyword).SequenceEqual(new[] { "/퀘스트", "/일퀘", "/출첵", "/출첵", "/상식퀴즈" }))
+                throw new Exception("퀘스트 조회·출석·퀴즈 별칭 수신 연결 오류");
             StaticVariable.AutoReboot = previousAuto;
             Console.WriteLine("PASS: periodic room recycle, draft deferral, retry, queue and receiver state preserved (no native input)");
             var dbType = typeof(Database);
