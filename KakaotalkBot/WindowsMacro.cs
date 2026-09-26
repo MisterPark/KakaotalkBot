@@ -381,21 +381,27 @@ namespace KakaotalkBot
         [DllImport("user32.dll")]
         private static extern bool IsWindow(IntPtr window);
 
+        internal string LastRecycleError { get; private set; }
+        private bool DeferRecycle(string reason) { LastRecycleError = reason; return false; }
+
         internal bool RecycleChatRoom(string roomName, int expectedPid)
         {
-            return StaInputWorker.Instance.Invoke(() =>
+            LastRecycleError = null;
+            bool recycled;
+            string error;
+            bool completed = StaInputWorker.Instance.TryInvoke(() =>
             {
                 if (IsChatRoomOpen(roomName))
                 {
                     IntPtr input = KakaoInputMentions.EmptyInputWindow(roomName, expectedPid);
-                    if (input == IntPtr.Zero) return false;
+                    if (input == IntPtr.Zero) return DeferRecycle("작성 중인 내용이 있어 재열기를 보류했습니다.");
                     IntPtr room = GetAncestor(input, 2);
-                    if (room == IntPtr.Zero) throw new InvalidOperationException("채팅창을 확인하지 못했습니다.");
+                    if (room == IntPtr.Zero) return DeferRecycle("채팅창을 확인하지 못했습니다.");
                     CloseWindow(room);
                     var closing = Stopwatch.StartNew();
                     while (IsWindow(room))
                     {
-                        if (closing.ElapsedMilliseconds >= 3000) throw new TimeoutException("채팅창 닫기 시간 초과");
+                        if (closing.ElapsedMilliseconds >= 3000) return DeferRecycle("채팅창 닫기 시간 초과");
                         Thread.Sleep(50);
                     }
                 }
@@ -403,13 +409,15 @@ namespace KakaotalkBot
                 var opening = Stopwatch.StartNew();
                 while (!IsChatRoomOpen(roomName))
                 {
-                    if (opening.ElapsedMilliseconds >= 3000) throw new TimeoutException("채팅창 재열기 시간 초과");
+                    if (opening.ElapsedMilliseconds >= 3000) return DeferRecycle("채팅창 재열기 시간 초과");
                     Thread.Sleep(50);
                 }
                 // 이름이 같은 다른 계정 창으로 연결되지 않았는지도 다시 검사합니다.
                 KakaoInputMentions.EmptyInputWindow(roomName, expectedPid);
                 return true;
-            });
+            }, out recycled, out error);
+            if (!completed) LastRecycleError = error;
+            return completed && recycled;
         }
 
         private DateTime nextKakaoLaunch;

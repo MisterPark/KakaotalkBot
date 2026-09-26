@@ -123,7 +123,6 @@ namespace KakaotalkBot
             {
                 DelayDiagnostics.RecordHealth(commands.Count, quizAnswers.Count);
                 UpdateInternally();
-                if (IsBotRunning) voiceRoomBot.Update();
                 nextProcessingAttempt = DateTime.MinValue;
                 if (LastProcessingError != null && LastProcessingError.StartsWith("DB 수신 유지 · 처리 재시도 대기:", StringComparison.Ordinal)) LastProcessingError = null;
             }
@@ -142,12 +141,11 @@ namespace KakaotalkBot
         {
             Database.Instance.ApplyContentRefresh();
             Database.Instance.MaintainMonth();
+            ProcessReset();
             ProcessDatabaseMessages();
             ProcessCommand();
             if (!IsBotRunning) return;
             MaintainChatWindow(DateTime.UtcNow, () => WindowsMacro.Instance.RecycleChatRoom(TargetWindow, SelectedRoom.ProcessId));
-            ProcessReset();
-
             if (soliloquyTimer.Check(Time.DeltaTime))
             {
                 //ProcessComonBot();
@@ -292,7 +290,7 @@ namespace KakaotalkBot
             else
             {
                 ProcessQuizAnswer(chat.AuthorId, chat.Nickname, message, chat.LogId);
-                if (message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || Quiz.IsQuizCommand(message) || OperatorCommandPolicy.Name(message) == "/퀴즈등록" || OperatorCommandPolicy.Name(message) == "/퀴즈삭제" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
+                if (message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || message == "/출첵" || Quiz.IsQuizCommand(message) || OperatorCommandPolicy.Name(message) == "/퀴즈등록" || OperatorCommandPolicy.Name(message) == "/퀴즈삭제" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
                     OperatorCommandPolicy.Name(message) == "/월간랭킹" || OperatorCommandPolicy.Name(message) == "/채팅랭킹" ||
                     OperatorCommandPolicy.Name(message) == "/네임드" || OperatorCommandPolicy.Name(message) == "/레벨랭킹" || OperatorCommandPolicy.Name(message) == "/랭킹" || Database.Instance.Keywords.Any(k => message.StartsWith(k)))
                     ProcessKeyword(chat.Nickname, message, chat.AuthorId, chat.LogId, chat.ChatId, chat.Mentions);
@@ -480,30 +478,20 @@ namespace KakaotalkBot
             }
             else if (command.Keyword == "/출첵")
             {
+                var now = DateTimeOffset.UtcNow;
                 string answer = Database.Instance.GetAnswer(command.Keyword);
-
-                if (string.IsNullOrEmpty(answer) == false)
+                if (string.IsNullOrWhiteSpace(answer)) answer = "출석했습니다.";
+                bool already = Database.Instance.CheckAttendance(command.AuthorId, command.Nickname, now);
+                var user = Database.Instance.GetOrAddUser(command.AuthorId, command.Nickname);
+                if (already)
+                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "이미 출석한 유저입니다.\n출석일: " +
+                        (user.AttendanceAt.Kind == DateTimeKind.Unspecified ? user.AttendanceAt :
+                            new DateTimeOffset(user.AttendanceAt).ToOffset(TimeSpan.FromHours(9)).DateTime).ToString("yyyy-MM-dd HH:mm") + " (한국 시간)");
+                else
                 {
-                    if (Database.Instance.CheckAttendance(command.AuthorId, command.Nickname))
-                    {
-                        Database.Instance.UpdateUserTable();
-                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"이미 출석한 유저입니다.");
-                    }
-                    else
-                    {
-                        if (Database.Instance.FindUser(command.AuthorId, out User user))
-                        {
-                            string questReward = Database.Instance.Quests.Complete(user, "attendance", command.ChatId, command.LogId, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-                            Database.Instance.UpdateUserTable();
-                            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{command.Nickname}]님이 {answer}\n+10포인트\n{questReward}\n(현재 포인트: {user.Point})");
-                        }
-                        else
-                        {
-                            WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{command.Nickname}]님이 {answer}\n+10포인트");
-                        }
-
-
-                    }
+                    string questReward = Database.Instance.Quests.Complete(user, "attendance", command.ChatId, command.LogId, now.ToUnixTimeSeconds());
+                    // 메모리에서 처리한 뒤 즉시 안내합니다. 시트 저장은 기존 주기 저장에서 처리합니다.
+                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, $"[{command.Nickname}]님이 {answer}\n+10포인트\n{questReward}\n(현재 포인트: {user.Point})");
                 }
             }
             else if (command.Keyword.StartsWith("/조회"))
@@ -725,7 +713,8 @@ namespace KakaotalkBot
             {
                 if (!recycle())
                 {
-                    RoomRecycleStatus = "채팅창 재열기 대기 · 작성 중인 내용 보존";
+                    RoomRecycleStatus = "채팅창 재열기 보류 · DB 수신 유지: " +
+                        (WindowsMacro.Instance.LastRecycleError ?? "작성 중인 내용 또는 창 상태 확인 대기");
                     return;
                 }
                 LastRoomRecycle = now.ToLocalTime();
@@ -740,9 +729,10 @@ namespace KakaotalkBot
 
         private void ProcessReset()
         {
-            if (lastUpdate.Day != DateTime.Now.Day)
+            DateTime today = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(9)).Date;
+            if (lastUpdate.Date != today)
             {
-                lastUpdate = DateTime.Now;
+                lastUpdate = today;
                 Database.Instance.ResetAttendance();
             }
         }

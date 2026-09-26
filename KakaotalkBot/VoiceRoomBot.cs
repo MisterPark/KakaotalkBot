@@ -7,22 +7,47 @@ using System.Threading;
 
 namespace KakaotalkBot
 {
-    public class VoiceRoomBot
+    public class VoiceRoomBot : IDisposable
     {
-        private bool isBotRunning = false;
+        private volatile bool isBotRunning = false;
+        private long lastInputTick;
+        private readonly AutoResetEvent recognitionReady = new AutoResetEvent(false);
+        private readonly object lifecycleGate = new object();
+        private Thread recognitionThread;
+        private readonly Action recognitionAction;
+        private volatile bool disposed;
+        private volatile string recognitionError;
+        public string RecognitionError { get { return recognitionError; } }
+        private int clickPending;
+        private bool clickProposed;
+        private long cycleSession;
+        private long presenterOpened;
+        private string targetWindow = string.Empty;
+        private Frame frame1, frame2, frame3;
+        private sealed class Frame
+        {
+            internal IntPtr Handle;
+            internal Point Position, Size, Origin;
+            internal long Tick, Session;
+            internal string Target;
+            internal bool Voice;
+        }
+        private static long Tick { get { return System.Diagnostics.Stopwatch.GetTimestamp(); } }
+        private static long Age(long tick) { return (Tick - tick) * 1000 / System.Diagnostics.Stopwatch.Frequency; }
+        private long inputSession;
+        private readonly object screenGate = new object();
+        private long screenVersion;
         private CustomTimer autoClickTimer;
         private CustomTimer screenCaptureTimer = new CustomTimer(100);
         private CustomTimer screenCaptureTimer2 = new CustomTimer(90);
         private CustomTimer screenCaptureTimer3 = new CustomTimer(1000);
         private CustomTimer autoPresenterTimer = new CustomTimer(10000);
-        private CustomTimer autoPresenterTimer2 = new CustomTimer(1000);
         private CustomTimer lineDetectorTimer = new CustomTimer(10000);
         private CustomTimer acceptTimer = new CustomTimer(90);
         private CustomTimer joinTimer = new CustomTimer(3000);
         private CustomTimer voiceRoomExitTimer = new CustomTimer(3000);
 
         private int modifiedY = 560;
-        private bool isLineFound = false;
         private Bitmap line;
         private Bitmap manager;
         private Bitmap manager2;
@@ -41,16 +66,40 @@ namespace KakaotalkBot
             get { return isBotRunning; }
             set
             {
-                isBotRunning = value;
+                lock (lifecycleGate)
+                {
+                    if (disposed) return;
+                    if (isBotRunning != value) Interlocked.Increment(ref inputSession);
+                    isBotRunning = value;
+                    Interlocked.Exchange(ref lastInputTick, 0);
+                    if (value && recognitionThread == null)
+                    {
+                        recognitionThread = new Thread(RecognitionLoop) { IsBackground = true, Name = "보이스룸 화면 인식" };
+                        recognitionThread.Start();
+                    }
+                    recognitionReady.Set();
+                }
             }
         }
         public Bitmap CurrentScreen { get; private set; }
         public Bitmap CurrentScreen2 { get; private set; }
         public Bitmap CurrentScreen3 { get; private set; }
-        public string TargetWindow { get; set; } = string.Empty;
+        public string TargetWindow
+        {
+            get { return targetWindow; }
+            set
+            {
+                if (targetWindow == value) return;
+                targetWindow = value;
+                Interlocked.Increment(ref inputSession);
+            }
+        }
 
 
-        public VoiceRoomBot()
+        // 테스트에서는 실제 화면과 입력 장치 없이 작업자 수명과 분리를 검증합니다.
+        internal VoiceRoomBot(Action recognitionAction) { this.recognitionAction = recognitionAction; }
+
+        public VoiceRoomBot() : this(null)
         {
             line = new Bitmap("리스너경계선.bmp");
             manager = new Bitmap("방장.bmp");
@@ -63,67 +112,149 @@ namespace KakaotalkBot
             check = new Bitmap("확인.bmp");
         }
 
-        public void Update()
+        private void RecognitionLoop()
         {
-            if (IsBotRunning == false) return;
-            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(Update); return; }
-
-
-            if (autoClickTimer.Check(Time.DeltaTime))
+            try
             {
-                if (IsClickMacroRunning)
+                while (!disposed)
                 {
-                    WindowsMacro.Instance.SetCursor(X, Y);
-                    WindowsMacro.Instance.ClickLeft();
+                    recognitionReady.WaitOne(IsBotRunning ? 90 : Timeout.Infinite);
+                    if (disposed) break;
+                    if (!IsBotRunning || Volatile.Read(ref clickPending) != 0) continue;
+                    try
+                    {
+                        lock (screenGate)
+                        {
+                            if (recognitionAction != null) recognitionAction(); else Recognize();
+                        }
+                        recognitionError = null;
+                    }
+                    catch (Exception ex) { recognitionError = ex.GetType().Name + ": " + ex.Message; }
                 }
             }
-
-            if (screenCaptureTimer.Check(Time.DeltaTime))
+            finally
             {
-                ProcessCaptureScreen();
+                lock (screenGate)
+                {
+                    foreach (var bitmap in new[] { CurrentScreen, CurrentScreen2, CurrentScreen3,
+                        line, manager, manager2, host, accept, accept2, join, voiceRoomExit, check })
+                        if (bitmap != null) bitmap.Dispose();
+                    CurrentScreen = CurrentScreen2 = CurrentScreen3 = null;
+                    screenVersion++;
+                }
+                lock (lifecycleGate) recognitionReady.Dispose();
             }
+        }
 
-            if (screenCaptureTimer2.Check(Time.DeltaTime))
+        private void Recognize()
+        {
+            clickProposed = false;
+            cycleSession = Interlocked.Read(ref inputSession);
+            long tick = Tick;
+            long previous = Interlocked.Exchange(ref lastInputTick, tick);
+            long elapsed = previous == 0 ? 0 : (tick - previous) * 1000 / System.Diagnostics.Stopwatch.Frequency;
+            if (previous == 0) Interlocked.Exchange(ref presenterOpened, 0);
+            if (screenCaptureTimer.Check(elapsed)) ProcessCaptureScreen();
+            if (screenCaptureTimer2.Check(elapsed)) ProcessCaptureScreen2();
+            if (screenCaptureTimer3.Check(elapsed)) ProcessCaptureScreen3();
+            long opened = Interlocked.Read(ref presenterOpened);
+            if (opened != 0)
             {
-                ProcessCaptureScreen2();
+                if (Age(opened) > 1500) Interlocked.Exchange(ref presenterOpened, 0);
+                else if (frame1 != null && frame1.Tick > opened) ProcessAutoPresenter2();
+                return;
             }
+            if (acceptTimer.Check(elapsed)) ProcessAccept();
+            if (joinTimer.Check(elapsed)) ProcessJoin();
+            if (voiceRoomExitTimer.Check(elapsed)) ProcessVoiceRoomExit();
+            if (lineDetectorTimer.Check(elapsed)) ProcessLineDetect();
+            if (autoPresenterTimer.Check(elapsed)) ProcessAutoPresenter();
+            if (autoClickTimer != null && autoClickTimer.Check(elapsed) && IsClickMacroRunning)
+                QueueClick(null, new Point(X, Y), false, false);
+        }
 
-            if (screenCaptureTimer3.Check(Time.DeltaTime))
+        public void Dispose()
+        {
+            lock (lifecycleGate)
             {
-                ProcessCaptureScreen3();
+                if (disposed) return;
+                isBotRunning = false;
+                Interlocked.Increment(ref inputSession);
+                disposed = true;
+                recognitionReady.Set();
+                if (recognitionThread == null)
+                {
+                    // 시작하지 않은 인스턴스도 동일한 정리 경로를 사용합니다.
+                    recognitionThread = new Thread(RecognitionLoop) { IsBackground = true };
+                    recognitionThread.Start();
+                }
             }
+        }
 
-            if (acceptTimer.Check(Time.DeltaTime))
+        // 화면 인식 결과는 한 건만 대기시킵니다. 커서 이동과 클릭은 하나의 STA 작업입니다.
+        private bool QueueClick(Frame frame, Point point, bool right, bool presenter)
+        {
+            long session = cycleSession;
+            long queued = Tick;
+            if (clickProposed || Interlocked.CompareExchange(ref clickPending, 1, 0) != 0) return false;
+            clickProposed = true;
+            bool posted = StaInputWorker.Instance.TryPostBackground(this, () =>
             {
-                ProcessAccept();
-            }
+                try
+                {
+                    if (disposed || !IsBotRunning || session != Interlocked.Read(ref inputSession) || Age(queued) > 500) return;
+                    if (frame != null)
+                    {
+                        IntPtr current = frame.Voice ? WindowsMacro.Instance.FindVoiceRoomWindow()
+                            : WindowsMacro.Instance.FindTargetWindow(frame.Target);
+                        if (frame.Session != session || Age(frame.Tick) > 1500 || current == IntPtr.Zero || current != frame.Handle
+                            || WindowsMacro.Instance.GetWindowPos(current) != frame.Position
+                            || WindowsMacro.Instance.GetWindowSize(current) != frame.Size) return;
+                        // 화면 캡처 기반 좌표이므로 다른 창이 가린 위치에는 클릭하지 않습니다.
+                        IntPtr pointWindow = WindowFromPoint(point);
+                        if (GetAncestor(pointWindow, 2) != GetAncestor(current, 2))
+                        {
+                            var className = new System.Text.StringBuilder(64);
+                            GetClassName(pointWindow, className, className.Capacity);
+                            if (className.ToString() != "#32768" || GetAncestor(GetForegroundWindow(), 2) != GetAncestor(current, 2)) return;
+                        }
+                    }
+                    else if (!IsClickMacroRunning) return;
+                    WindowsMacro.Instance.SetCursor(point.X, point.Y);
+                    if (right) WindowsMacro.Instance.ClickRight(); else WindowsMacro.Instance.ClickLeft();
+                    if (presenter) Interlocked.Exchange(ref presenterOpened, Tick);
+                }
+                finally { Interlocked.Exchange(ref clickPending, 0); }
+            });
+            if (!posted) Interlocked.Exchange(ref clickPending, 0);
+            return posted;
+        }
 
-            if (joinTimer.Check(Time.DeltaTime))
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, System.Text.StringBuilder name, int capacity);
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(Point point);
+        [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+
+        // UI는 작업자가 소유한 Bitmap을 직접 표시하지 않고 변경된 프레임의 복사본만 받습니다.
+        internal bool TryCopyPreviews(ref long version, out Bitmap[] images)
+        {
+            images = null;
+            if (!Monitor.TryEnter(screenGate)) return false;
+            try
             {
-                ProcessJoin();
+                if (version == screenVersion) return false;
+                var copies = new Bitmap[3];
+                try
+                {
+                    copies[0] = CurrentScreen == null ? null : (Bitmap)CurrentScreen.Clone();
+                    copies[1] = CurrentScreen2 == null ? null : (Bitmap)CurrentScreen2.Clone();
+                    copies[2] = CurrentScreen3 == null ? null : (Bitmap)CurrentScreen3.Clone();
+                }
+                catch { foreach (var copy in copies) if (copy != null) copy.Dispose(); throw; }
+                images = copies; version = screenVersion;
+                return true;
             }
-
-            if (voiceRoomExitTimer.Check(Time.DeltaTime))
-            {
-                ProcessVoiceRoomExit();
-            }
-
-            if (lineDetectorTimer.Check(Time.DeltaTime))
-            {
-                ProcessLineDetect();
-            }
-
-            if (autoPresenterTimer.Check(Time.DeltaTime))
-            {
-                ProcessAutoPresenter();
-                ProcessAutoPresenter2();
-            }
-
-            if (autoPresenterTimer2.Check(Time.DeltaTime))
-            {
-                
-            }
-
+            finally { Monitor.Exit(screenGate); }
         }
 
         public void Start(int x, int y, long delay)
@@ -131,280 +262,83 @@ namespace KakaotalkBot
             X = x;
             Y = y;
             autoClickTimer = new CustomTimer(delay);
-            isBotRunning = true;
+            IsBotRunning = true;
         }
 
         public void Stop()
         {
-            isBotRunning = false;
+            IsBotRunning = false;
+        }
+
+        private Bitmap CaptureFrame(bool voice, int region, out Frame frame)
+        {
+            frame = null;
+            string target = TargetWindow;
+            IntPtr handle = voice ? WindowsMacro.Instance.FindVoiceRoomWindow() : WindowsMacro.Instance.FindTargetWindow(target);
+            if (handle == IntPtr.Zero) return null;
+            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
+            Point size = WindowsMacro.Instance.GetWindowSize(handle);
+            if (size.X <= 0 || size.Y <= 0) return null;
+            Rectangle area = region == 2
+                ? new Rectangle(pos.X + (size.X - 260) / 2, pos.Y + (size.Y - 120) / 2, 130, 120)
+                : new Rectangle(pos.X, pos.Y, size.X, Math.Min(size.Y, region == 3 ? 150 : modifiedY));
+            var bitmap = CaptureScreen(area);
+            frame = new Frame { Handle = handle, Position = pos, Size = size, Origin = area.Location,
+                Tick = Tick, Session = cycleSession, Voice = voice, Target = target };
+            return bitmap;
         }
 
         private void ProcessCaptureScreen()
         {
-            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
-            if (handle == IntPtr.Zero) return;
-
-
-            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-            Point size = WindowsMacro.Instance.GetWindowSize(handle);
-
-            Rectangle captureArea = new Rectangle(pos.X, pos.Y, size.X, modifiedY);
-
-
-            if (CurrentScreen != null)
-            {
-                CurrentScreen.Dispose();
-                CurrentScreen = null;
-            }
-            CurrentScreen = CaptureScreen(captureArea);
+            var bitmap = CaptureFrame(true, 1, out frame1);
+            if (CurrentScreen != null) CurrentScreen.Dispose();
+            CurrentScreen = bitmap; screenVersion++;
         }
-
         private void ProcessCaptureScreen2()
         {
-            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
-            if (handle == IntPtr.Zero) return;
-
-
-            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-            Point size = WindowsMacro.Instance.GetWindowSize(handle);
-
-            int w = 260;
-            int h = 120;
-            int x = pos.X + (size.X - w) / 2;
-            int y = pos.Y + (size.Y - h) / 2;
-
-            Rectangle captureArea = new Rectangle(x, y, 130, h);
-
-
-            if (CurrentScreen2 != null)
-            {
-                CurrentScreen2.Dispose();
-                CurrentScreen2 = null;
-            }
-            CurrentScreen2 = CaptureScreen(captureArea);
+            var bitmap = CaptureFrame(true, 2, out frame2);
+            if (CurrentScreen2 != null) CurrentScreen2.Dispose();
+            CurrentScreen2 = bitmap; screenVersion++;
         }
-
         private void ProcessCaptureScreen3()
         {
-            IntPtr handle = WindowsMacro.Instance.FindTargetWindow(TargetWindow);
-            if (handle == IntPtr.Zero) return;
-
-
-            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-            Point size = WindowsMacro.Instance.GetWindowSize(handle);
-
-            int w = size.X;
-            int h = 150;
-            int x = pos.X;
-            int y = pos.Y;
-
-            Rectangle captureArea = new Rectangle(x, y, w, h);
-
-
-            if (CurrentScreen3 != null)
-            {
-                CurrentScreen3.Dispose();
-                CurrentScreen3 = null;
-            }
-            CurrentScreen3 = CaptureScreen(captureArea);
+            var bitmap = CaptureFrame(false, 3, out frame3);
+            if (CurrentScreen3 != null) CurrentScreen3.Dispose();
+            CurrentScreen3 = bitmap; screenVersion++;
         }
 
+        private static bool Match(Bitmap screen, Bitmap template, out Point at)
+        {
+            return TryFindTemplate_Sampled(screen, template, out at, 15, 1, 1, 120);
+        }
         private void ProcessLineDetect()
         {
-            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
-            if (handle == IntPtr.Zero) return;
-
-
-            if (TryFindTemplate_Sampled(
-                    CurrentScreen, line, out var at2,
-                    tolerance: 15,
-                    searchStep: 1,
-                    gridSampleStep: 1,
-                    maxSamplePoints: 120))
-            {
-                Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-                int x = at2.X + pos.X;
-                int y = at2.Y + pos.Y;
-
-                modifiedY = at2.Y + line.Height;
-            }
-            else
-            {
-                modifiedY = 560;
-            }
-
+            Point at;
+            modifiedY = Match(CurrentScreen, line, out at) ? at.Y + line.Height : 560;
         }
-
+        private bool MatchAndClick(Bitmap screen, Frame frame, Bitmap template, bool right = false, bool presenter = false, bool center = false)
+        {
+            Point at;
+            if (frame == null || Volatile.Read(ref clickPending) != 0 || !Match(screen, template, out at)) return false;
+            return QueueClick(frame, new Point(frame.Origin.X + at.X + (center ? template.Width / 2 : 0),
+                frame.Origin.Y + at.Y + (center ? template.Height / 2 : 0)), right, presenter);
+        }
         private void ProcessAutoPresenter()
         {
-            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
-            if (handle == IntPtr.Zero) return;
-
-
-            if (TryFindTemplate_Sampled(
-                       CurrentScreen, manager, out var at,
-                       tolerance: 15,
-                       searchStep: 1,
-                       gridSampleStep: 1,
-                       maxSamplePoints: 120))
-            {
-                Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-                int x = at.X + pos.X;
-                int y = at.Y + pos.Y;
-                WindowsMacro.Instance.SetCursor(x, y);
-                WindowsMacro.Instance.ClickRight();
-                Thread.Sleep(100);
-                ProcessCaptureScreen();
-            }
-            else if (TryFindTemplate_Sampled(
-                     CurrentScreen, manager2, out var at2,
-                     tolerance: 15,
-                     searchStep: 1,
-                     gridSampleStep: 1,
-                     maxSamplePoints: 120))
-            {
-                Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-                int x = at2.X + pos.X;
-                int y = at2.Y + pos.Y;
-                WindowsMacro.Instance.SetCursor(x, y);
-                WindowsMacro.Instance.ClickRight();
-                Thread.Sleep(100);
-                ProcessCaptureScreen();
-            }
+            if (!MatchAndClick(CurrentScreen, frame1, manager, true, true))
+                MatchAndClick(CurrentScreen, frame1, manager2, true, true);
         }
-
         private void ProcessAutoPresenter2()
         {
-            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
-            if (handle == IntPtr.Zero) return;
-
-
-            if (TryFindTemplate_Sampled(
-                     CurrentScreen, host, out var at3,
-                     tolerance: 15,
-                     searchStep: 1,
-                     gridSampleStep: 1,
-                     maxSamplePoints: 120))
-            {
-                Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-                int x2 = at3.X + pos.X;
-                int y2 = at3.Y + pos.Y;
-                WindowsMacro.Instance.SetCursor(x2, y2);
-                WindowsMacro.Instance.ClickLeft();
-            }
+            if (MatchAndClick(CurrentScreen, frame1, host)) Interlocked.Exchange(ref presenterOpened, 0);
         }
-
         private void ProcessAccept()
         {
-            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
-            if (handle == IntPtr.Zero) return;
-
-
-            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-            Point size = WindowsMacro.Instance.GetWindowSize(handle);
-
-            int w = 260;
-            int h = 120;
-            int x = pos.X + (size.X - w) / 2;
-            int y = pos.Y + (size.Y - h) / 2;
-
-            if (TryFindTemplate_Sampled(
-                    CurrentScreen2, accept, out var at,
-                    tolerance: 15,
-                    searchStep: 1,
-                    gridSampleStep: 1,
-                    maxSamplePoints: 120))
-            {
-                int x2 = x + at.X;
-                int y2 = y + at.Y;
-                WindowsMacro.Instance.SetCursor(x2, y2);
-                WindowsMacro.Instance.ClickLeft();
-            }
-
-            if (TryFindTemplate_Sampled(
-                    CurrentScreen2, accept2, out var at2,
-                    tolerance: 15,
-                    searchStep: 1,
-                    gridSampleStep: 1,
-                    maxSamplePoints: 120))
-            {
-                int x2 = x + at2.X;
-                int y2 = y + at2.Y;
-                WindowsMacro.Instance.SetCursor(x2, y2);
-                WindowsMacro.Instance.ClickLeft();
-            }
-
-            if (TryFindTemplate_Sampled(
-                    CurrentScreen2, check, out var at3,
-                    tolerance: 15,
-                    searchStep: 1,
-                    gridSampleStep: 1,
-                    maxSamplePoints: 120))
-            {
-                int x2 = x + at3.X;
-                int y2 = y + at3.Y;
-                WindowsMacro.Instance.SetCursor(x2, y2);
-                WindowsMacro.Instance.ClickLeft();
-            }
+            if (!MatchAndClick(CurrentScreen2, frame2, accept)
+                && !MatchAndClick(CurrentScreen2, frame2, accept2)) MatchAndClick(CurrentScreen2, frame2, check);
         }
-
-        private void ProcessJoin()
-        {
-            if (CurrentScreen3 == null) return;
-
-            IntPtr handle = WindowsMacro.Instance.FindTargetWindow(TargetWindow);
-            if (handle == IntPtr.Zero) return;
-
-
-            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-            Point size = WindowsMacro.Instance.GetWindowSize(handle);
-
-            int w = size.X;
-            int h = 150;
-            int x = pos.X;
-            int y = pos.Y;
-
-            if (TryFindTemplate_Sampled(
-                    CurrentScreen3, join, out var at,
-                    tolerance: 15,
-                    searchStep: 1,
-                    gridSampleStep: 1,
-                    maxSamplePoints: 120))
-            {
-                int x2 = x + at.X + join.Width / 2;
-                int y2 = y + at.Y + join.Height / 2;
-                WindowsMacro.Instance.SetCursor(x2, y2);
-                WindowsMacro.Instance.ClickLeft();
-            }
-        }
-
-        private void ProcessVoiceRoomExit()
-        {
-            IntPtr handle = WindowsMacro.Instance.FindVoiceRoomWindow();
-            if (handle == IntPtr.Zero) return;
-
-
-            Point pos = WindowsMacro.Instance.GetWindowPos(handle);
-            Point size = WindowsMacro.Instance.GetWindowSize(handle);
-
-            int w = 260;
-            int h = 120;
-            int x = pos.X + (size.X - w) / 2;
-            int y = pos.Y + (size.Y - h) / 2;
-
-            if (TryFindTemplate_Sampled(
-                    CurrentScreen2, voiceRoomExit, out var at,
-                    tolerance: 15,
-                    searchStep: 1,
-                    gridSampleStep: 1,
-                    maxSamplePoints: 120))
-            {
-                int x2 = x + at.X;
-                int y2 = y + at.Y;
-                WindowsMacro.Instance.SetCursor(x2, y2);
-                WindowsMacro.Instance.ClickLeft();
-            }
-        }
+        private void ProcessJoin() { MatchAndClick(CurrentScreen3, frame3, join, center: true); }
+        private void ProcessVoiceRoomExit() { MatchAndClick(CurrentScreen2, frame2, voiceRoomExit); }
 
         private Bitmap CaptureScreen(Rectangle rect)
         {

@@ -36,6 +36,13 @@ class StaInputWorkerTests
         catch (InvalidOperationException e) { failed = e.Message == "시험 오류"; }
         Check(failed, "원래 예외 전달");
         Check(worker.Invoke(() => 42) == 42, "오류 이후 후속 작업 실행");
+        bool recycleResult;
+        string recycleError;
+        Check(!worker.TryInvoke<bool>(() => { throw new TimeoutException("시험 재열기 시간 초과"); }, out recycleResult, out recycleError) &&
+            !recycleResult && recycleError.Contains("시간 초과"), "유지보수 시간 초과를 작업자 안에서 처리");
+        Check(!worker.TryInvoke<bool>(() => { throw new InvalidOperationException("시험 창 상태 변경"); }, out recycleResult, out recycleError) &&
+            recycleError.Contains("창 상태"), "창 상태 실패를 결과로 반환");
+        Check(worker.Invoke(() => 43) == 43, "재열기 실패 후 입력 작업자 유지");
         var limited = new StaInputWorker(2);
         var entered = new ManualResetEventSlim(false);
         var release = new ManualResetEventSlim(false);
@@ -56,6 +63,28 @@ class StaInputWorkerTests
             Check(executed == 4, "포화 중 작업 누락·중복 없음");
         }
         finally { release.Set(); limited.Complete(); }
+        var priority = new StaInputWorker(4);
+        var started = new ManualResetEventSlim(false);
+        var finish = new ManualResetEventSlim(false);
+        var lowDone = new ManualResetEventSlim(false);
+        var order = new List<string>();
+        var blocker = Task.Factory.StartNew(() => priority.Invoke(() => { started.Set(); finish.Wait(); order.Add("running"); }), TaskCreationOptions.LongRunning);
+        Check(started.Wait(5000), "우선순위 시험 시작");
+        object lowKey = new object();
+        Check(priority.TryPostBackground(lowKey, () => { order.Add("voice"); lowDone.Set(); }), "보이스룸 비동기 접수");
+        Check(!priority.TryPostBackground(lowKey, () => order.Add("duplicate")), "보이스룸 중복 적재 방지");
+        var chat = Task.Factory.StartNew(() => priority.Invoke(() => order.Add("chat")), TaskCreationOptions.LongRunning);
+        try
+        {
+            Check(SpinWait.SpinUntil(() => priority.PendingCount == 2, 5000), "두 우선순위 대기 확인");
+            finish.Set();
+            Check(Task.WaitAll(new[] { blocker, chat }, 5000) && lowDone.Wait(5000), "우선순위 작업 완료");
+            Check(string.Join(",", order) == "running,chat,voice", "실행 중 묶음 유지·채팅 우선·보이스룸 후순위");
+            priority.TryPostBackground(new object(), () => { throw new InvalidOperationException("보조 입력 시험"); });
+            Check(SpinWait.SpinUntil(() => priority.BackgroundError != null, 5000), "보조 입력 오류 상태 기록");
+            Check(priority.Invoke(() => 99) == 99, "보조 입력 실패 후 채팅 처리 유지");
+        }
+        finally { finish.Set(); priority.Complete(); }
         worker.Complete();
         bool closed = false;
         try { worker.Invoke(() => { }); }

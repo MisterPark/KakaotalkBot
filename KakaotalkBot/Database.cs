@@ -228,12 +228,15 @@ namespace KakaotalkBot
 
         public void ResetAttendance()
         {
-            List<List<object>> users = new List<List<object>>();
-            foreach (User user in userTable)
-            {
-                user.TakeAttendance = false;
-                users.Add(user.ToRow());
-            }
+            DateTime today = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(9)).Date;
+            foreach (User user in userTable) user.TakeAttendance = AttendanceDate(user.AttendanceAt) == today;
+        }
+
+        internal static DateTime AttendanceDate(DateTime recorded)
+        {
+            // 이전 파일의 시간대 없는 값은 기존 코드가 저장한 한국 시각입니다.
+            return recorded.Kind == DateTimeKind.Unspecified ? recorded.Date :
+                new DateTimeOffset(recorded).ToOffset(TimeSpan.FromHours(9)).Date;
         }
 
         public void UpdateUserTable()
@@ -309,11 +312,14 @@ namespace KakaotalkBot
         }
 
         public bool CheckAttendance(long userId, string nickname)
+        { return CheckAttendance(userId, nickname, DateTimeOffset.UtcNow); }
+
+        public bool CheckAttendance(long userId, string nickname, DateTimeOffset now)
         {
             var user = AddUser(userId, nickname);
             // 봇 재시작이나 출석 표시 초기화 뒤에도 같은 날짜의 보상은 다시 지급하지 않는다.
-            DateTime today = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(9)).DateTime;
-            if (user.AttendanceAt.Date == today.Date) { user.TakeAttendance = true; return true; }
+            DateTime today = now.ToOffset(TimeSpan.FromHours(9)).DateTime;
+            if (AttendanceDate(user.AttendanceAt) == today.Date) { user.TakeAttendance = true; return true; }
             int points = checked(user.Point + 10);
             user.TakeAttendance = true;
             user.AttendanceAt = today;

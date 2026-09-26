@@ -73,6 +73,7 @@ namespace KakaotalkBot
                 }
             }
             if (ScreenPixelDetector.Instance.IsRunning) ScreenPixelDetector.Instance.Stop();
+            bot.VoiceRoomBot.Dispose();
             StaInputWorker.Instance.Complete();
         }
 

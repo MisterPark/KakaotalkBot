@@ -52,6 +52,18 @@ internal static class UserIdentityTests
                 db.UserTable[0].AttendanceAt = DateTime.Today.AddDays(-1);
                 Check(!db.CheckAttendance(A, "다음날") && db.UserTable[0].Point == 20, "다음날 출석");
             });
+            Run("한국 자정·월 변경·UTC 저장 출석", () =>
+            {
+                var db = FreshDatabase();
+                var before = new DateTimeOffset(2026, 9, 30, 23, 59, 59, TimeSpan.FromHours(9));
+                Check(!db.CheckAttendance(A, "시험", before), "자정 전 출석");
+                Check(!db.CheckAttendance(A, "시험", before.AddSeconds(1)), "월 변경 자정 출석");
+                Check(db.CheckAttendance(A, "시험", before.AddSeconds(2)), "같은 날짜 중복 방지");
+                Check(db.UserTable[0].Point == 20, "날짜당 보상 1회");
+                db.UserTable[0].AttendanceAt = before.AddSeconds(1).UtcDateTime;
+                Check(db.CheckAttendance(A, "시험", before.AddSeconds(2)), "UTC 출석 시각을 한국 날짜로 비교");
+                Check(!db.CheckAttendance(A, "시험", before.AddMonths(1).AddSeconds(1)), "월이 다른 같은 일자 출석");
+            });
             Run("미등록 멘션 대상 조회와 기존 정보 보존", () =>
             {
                 var db = FreshDatabase(); long id; int amount; string nickname;
@@ -185,6 +197,7 @@ internal static class UserIdentityTests
     private static void TestIncoming()
     {
         var db = FreshDatabase(); var bot = BareBot();
+        db.CommonSenses.Add(new Quiz { Question = "시험 문제", Answer = "정답" }); db.CurrentAnswerIndex = 0;
         Set(bot, "chatLog", new List<string>()); Set(bot, "commands", new Queue<Command>()); Set(bot, "quizAnswers", new Queue<Bot.QuizAnswer>());
         var room = new ChatRoomInfo(); typeof(ChatRoomInfo).GetProperty("ChatId").SetValue(room, 10L, null);
         typeof(Bot).GetProperty("SelectedRoom").SetValue(bot, room, null);
@@ -206,6 +219,7 @@ internal static class UserIdentityTests
     private static void TestDepartureEvents()
     {
         var db = FreshDatabase(); var bot = BareBot();
+        db.CommonSenses.Add(new Quiz { Question = "시험 문제", Answer = "정답" }); db.CurrentAnswerIndex = 0;
         var commands = new Queue<Command>(); var answers = new Queue<Bot.QuizAnswer>();
         Set(bot, "chatLog", new List<string>()); Set(bot, "commands", commands); Set(bot, "quizAnswers", answers);
         var room = new ChatRoomInfo(); typeof(ChatRoomInfo).GetProperty("ChatId").SetValue(room, 10L, null);

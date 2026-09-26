@@ -89,6 +89,8 @@ namespace KakaotalkBot
             Shown += (sender, args) => RefreshRoomCatalog();
         }
 
+        private long voicePreviewVersion = -1;
+
         private void Timer_Tick(object sender, EventArgs e)
         {
             TickOperations();
@@ -120,6 +122,8 @@ namespace KakaotalkBot
             button2.Text = bot.IsBotRunning ? "DB 수신 중지" : bot.IsReceiverStopping ? "수신 종료 중…" : "DB 수신 시작";
             if (bot.HasReceiver && catalogTask == null) databaseStatus.Text = bot.ReceiveStatus;
             if (ScreenPixelDetector.Instance.LastError != null) databaseStatus.Text = ScreenPixelDetector.Instance.LastError;
+            if (voiceRoomBot.RecognitionError != null) databaseStatus.Text = "보이스룸 인식 실패: " + voiceRoomBot.RecognitionError;
+            if (StaInputWorker.Instance.BackgroundError != null) databaseStatus.Text = "보조 입력 작업 실패: " + StaInputWorker.Instance.BackgroundError;
             if (News.LastRefreshError != null) databaseStatus.Text = News.LastRefreshError;
             if (Database.Instance.ContentRefreshError != null) databaseStatus.Text = Database.Instance.ContentRefreshError;
             if (databaseError != null) databaseStatus.Text = databaseError;
@@ -151,24 +155,18 @@ namespace KakaotalkBot
             label5.Text = $"[{p.X}, {p.Y}]";
             label7.Text = $"[{p.X}, {p.Y}]";
 
-            if(voiceRoomBot.CurrentScreen != null)
+            Bitmap[] previews;
+            if (voiceRoomBot.TryCopyPreviews(ref voicePreviewVersion, out previews))
             {
-                pictureBox1.Size = new Size(voiceRoomBot.CurrentScreen.Width, voiceRoomBot.CurrentScreen.Height);
-                pictureBox1.Image = voiceRoomBot.CurrentScreen;
+                var boxes = new[] { pictureBox1, pictureBox2, pictureBox3 };
+                for (int i = 0; i < boxes.Length; i++)
+                {
+                    var old = boxes[i].Image;
+                    boxes[i].Image = previews[i];
+                    if (previews[i] != null) boxes[i].Size = previews[i].Size;
+                    if (old != null) old.Dispose();
+                }
             }
-
-            if (voiceRoomBot.CurrentScreen2 != null)
-            {
-                pictureBox2.Size = new Size(voiceRoomBot.CurrentScreen2.Width, voiceRoomBot.CurrentScreen2.Height);
-                pictureBox2.Image = voiceRoomBot.CurrentScreen2;
-            }
-
-            if (voiceRoomBot.CurrentScreen3 != null)
-            {
-                pictureBox3.Size = new Size(voiceRoomBot.CurrentScreen3.Width, voiceRoomBot.CurrentScreen3.Height);
-                pictureBox3.Image = voiceRoomBot.CurrentScreen3;
-            }
-
         }
 
         private void OnApplicationExit(object sender, EventArgs e)
@@ -393,7 +391,7 @@ namespace KakaotalkBot
                 try
                 {
                     if (bot.SelectedRoom != null && !WindowsMacro.Instance.RecycleChatRoom(room, bot.SelectedRoom.ProcessId))
-                        databaseError = "작성 중인 내용이 있어 채팅창 재열기를 보류했습니다.";
+                        databaseError = WindowsMacro.Instance.LastRecycleError ?? "채팅창 재열기를 보류했습니다.";
                 }
                 catch (Exception error) { databaseError = "채팅창 재열기 실패: " + error.Message; }
             }
@@ -407,6 +405,11 @@ namespace KakaotalkBot
 
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
+            foreach (var box in new[] { pictureBox1, pictureBox2, pictureBox3 })
+            {
+                var image = box.Image; box.Image = null;
+                if (image != null) image.Dispose();
+            }
             Application.Exit();
         }
 
@@ -428,7 +431,7 @@ namespace KakaotalkBot
                 long session = ScreenPixelDetector.Instance.Generation + 1;
                 pixelClickListener = () =>
                 {
-                    StaInputWorker.Instance.Invoke(() =>
+                    StaInputWorker.Instance.TryPostBackground(ScreenPixelDetector.Instance, () =>
                     {
                         if (!ScreenPixelDetector.Instance.IsCurrentSession(session)) return;
                         WindowsMacro.Instance.SetCursor(x, y);
