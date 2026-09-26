@@ -36,6 +36,26 @@ class StaInputWorkerTests
         catch (InvalidOperationException e) { failed = e.Message == "시험 오류"; }
         Check(failed, "원래 예외 전달");
         Check(worker.Invoke(() => 42) == 42, "오류 이후 후속 작업 실행");
+        var limited = new StaInputWorker(2);
+        var entered = new ManualResetEventSlim(false);
+        var release = new ManualResetEventSlim(false);
+        int executed = 0;
+        var held = Task.Factory.StartNew(() => limited.Invoke(() => { entered.Set(); release.Wait(); Interlocked.Increment(ref executed); }), TaskCreationOptions.LongRunning);
+        Check(entered.Wait(5000), "포화 시험 작업 시작");
+        var first = Task.Factory.StartNew(() => limited.Invoke(() => Interlocked.Increment(ref executed)), TaskCreationOptions.LongRunning);
+        var second = Task.Factory.StartNew(() => limited.Invoke(() => Interlocked.Increment(ref executed)), TaskCreationOptions.LongRunning);
+        try
+        {
+            Check(SpinWait.SpinUntil(() => limited.PendingCount == 2, 5000), "입력 큐 용량 제한 유지");
+            var waiting = new ManualResetEventSlim(false);
+            var overflow = Task.Factory.StartNew(() => { waiting.Set(); limited.Invoke(() => Interlocked.Increment(ref executed)); }, TaskCreationOptions.LongRunning);
+            Check(waiting.Wait(5000), "초과 호출 시작");
+            Check(!overflow.Wait(150), "큐 포화 시 예외 대신 대기");
+            release.Set();
+            Check(Task.WaitAll(new[] { held, first, second, overflow }, 5000), "포화 해소 후 모든 호출 완료");
+            Check(executed == 4, "포화 중 작업 누락·중복 없음");
+        }
+        finally { release.Set(); limited.Complete(); }
         worker.Complete();
         bool closed = false;
         try { worker.Invoke(() => { }); }

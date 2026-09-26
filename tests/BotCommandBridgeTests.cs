@@ -42,12 +42,14 @@ internal static class BotCommandBridgeTests
                 if (log == 100 || eventCommand != null) messageType.GetField("Mentions").SetValue(message, mentions);
                 handle.Invoke(bot, new[] { message });
             };
+            Database.Instance.CommonSenses.Add(new Quiz { Question = "시험", Answer = "정답", Category = "과학" });
+            Database.Instance.CurrentAnswerIndex = 0;
             deliver(10, 100, "/테스트", null);
             deliver(10, 101, "/테스트", null);
             deliver(10, 102, "퀴즈 답변", null);
             deliver(999, 103, "/테스트", null);
             deliver(10, 104, "/입장", "/입장");
-            if (commands.Count != 3 || answers.Count != 3) throw new Exception("명령/퀴즈 분기 또는 방 격리 오류");
+            if (commands.Count != 3 || answers.Count != 1) throw new Exception("명령/퀴즈 분기 또는 방 격리 오류");
             if (answers.Any(answer => answer.AuthorId != 7)) throw new Exception("퀴즈 작성자 ID 누락");
             var values = commands.ToArray();
             if (values[0].LogId != 100 || values[1].LogId != 101 || values[2].Keyword != "/입장") throw new Exception("명령 순서 오류");
@@ -291,6 +293,29 @@ internal static class BotCommandBridgeTests
             apply.Invoke(Database.Instance, null);
             if (!Database.Instance.ContentRefreshError.Contains("시험 시간 초과") || !object.ReferenceEquals(retainedQuizzes, Database.Instance.CommonSenses))
                 throw new Exception("처리된 통신 실패가 기존 캐시를 덮어씀");
+            Database.Instance.ResetCommonSense();
+            answers.Clear();
+            var receiveAnswer = typeof(Bot).GetMethod("ProcessQuizAnswer", flags);
+            User soakUser;
+            Database.Instance.FindUser(7, out soakUser);
+            int contributionBefore = soakUser.Contribution;
+            for (int i = 0; i < 100000; i++) receiveAnswer.Invoke(bot, new object[] { 7L, "검증사용자", "일반 대화", (long)i });
+            if (answers.Count != 0) throw new Exception("퀴즈 미진행 장기 수신에서 큐 누적");
+            if (soakUser.Contribution != contributionBefore + 100000) throw new Exception("일반 대화 기여도 누락");
+            using (var sourceImage = new System.Drawing.Bitmap(64, 64, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            using (var templateImage = new System.Drawing.Bitmap(8, 8, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            using (var tooLarge = new System.Drawing.Bitmap(80, 80))
+            {
+                System.Drawing.Point point;
+                for (int i = 0; i < 5000; i++)
+                {
+                    if (!VoiceRoomBot.TryFindTemplate_Sampled(sourceImage, templateImage, out point)) throw new Exception("반복 이미지 비교 실패");
+                    if (VoiceRoomBot.TryFindTemplate_Sampled(sourceImage, tooLarge, out point)) throw new Exception("큰 템플릿 비교 오류");
+                }
+                sourceImage.GetPixel(0, 0); templateImage.GetPixel(0, 0);
+                if (VoiceRoomBot.TryFindTemplate_Sampled(null, templateImage, out point)) throw new Exception("빈 캡처 비교 오류");
+            }
+            Console.WriteLine("PASS: 100000 idle quiz messages retain no answers; 5000 image comparisons preserve source ownership (no native input)");
             Console.WriteLine("PASS: timeout recovery, bounded retries, no retry on invalid data, cancellation/error preserves cache");
             Console.WriteLine("PASS: background refresh apply, active quiz protection, failed refresh preserves cache");
             Console.WriteLine("PASS: Bot command queue, mention IDs, quiz, contribution, room isolation (no sends)");

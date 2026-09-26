@@ -412,34 +412,21 @@ namespace KakaotalkBot
             });
         }
 
+        private DateTime nextKakaoLaunch;
+
         public void OpenChatRoom(string roomName)
         {
             if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => OpenChatRoom(roomName)); return; }
-            // 1. 카카오톡 메인 창 찾기
-            bool alreadyOpen = false;
+            // 실행·로그인 대기를 STA 안에서 하지 않습니다. 봇의 다음 열기 시도에서 다시 확인합니다.
             IntPtr hwndKakao = FindWindow(null, "카카오톡");
             if (hwndKakao == IntPtr.Zero)
             {
-                alreadyOpen = false;
-                LaunchKakaoTalk();
-            }
-            else
-            {
-                alreadyOpen = true;
-            }
-
-            var opening = Stopwatch.StartNew();
-            while (FindWindow(null, "카카오톡") == IntPtr.Zero)
-            {
-                if (opening.ElapsedMilliseconds >= 15000) throw new TimeoutException("카카오톡 메인 창을 찾지 못했습니다.");
-                Thread.Sleep(100);
-            }
-            hwndKakao = FindWindow(null, "카카오톡");
-
-            if (alreadyOpen == false)
-            {
-                Thread.Sleep(20000);
-                hwndKakao = FindWindow(null, "카카오톡");
+                if (DateTime.UtcNow >= nextKakaoLaunch)
+                {
+                    nextKakaoLaunch = DateTime.UtcNow.AddSeconds(30);
+                    LaunchKakaoTalk();
+                }
+                throw new InvalidOperationException("카카오톡 실행·로그인 대기 중입니다. 다음 주기에 다시 확인합니다.");
             }
 
             Point p = GetWindowPos(hwndKakao);
@@ -472,9 +459,8 @@ namespace KakaotalkBot
             Thread.Sleep(50);
             ClickLeft();
 
-            Thread.Sleep(1000);
-
-
+            var opened = Stopwatch.StartNew();
+            while (!IsChatRoomOpen(roomName) && opened.ElapsedMilliseconds < 1000) Thread.Sleep(50);
         }
 
         public void CloseWindow(string windowName)

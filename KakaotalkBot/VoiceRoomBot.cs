@@ -409,11 +409,12 @@ namespace KakaotalkBot
         private Bitmap CaptureScreen(Rectangle rect)
         {
             Bitmap bmp = new Bitmap(rect.Width, rect.Height);
-            using (Graphics g = Graphics.FromImage(bmp))
+            try
             {
-                g.CopyFromScreen(rect.Location, Point.Empty, rect.Size);
+                using (Graphics g = Graphics.FromImage(bmp)) g.CopyFromScreen(rect.Location, Point.Empty, rect.Size);
+                return bmp;
             }
-            return bmp;
+            catch { bmp.Dispose(); throw; }
         }
 
         public readonly struct SamplePoint
@@ -470,24 +471,18 @@ namespace KakaotalkBot
         {
             foundAt = default;
 
-            Bitmap src32 = Ensure32bppArgb(source);
-            Bitmap tpl32 = Ensure32bppArgb(template);
-
-            int sw = src32.Width, sh = src32.Height;
-            int tw = tpl32.Width, th = tpl32.Height;
-
-            if (tw > sw || th > sh) return false;
-
-            var samples = BuildGridSamples(tw, th, gridSampleStep, maxSamplePoints);
-
-            var rectS = new Rectangle(0, 0, sw, sh);
-            var rectT = new Rectangle(0, 0, tw, th);
-
-            BitmapData ds = null;
-            BitmapData dt = null;
-
+            if (source == null || template == null || template.Width > source.Width || template.Height > source.Height) return false;
+            Bitmap src32 = null, tpl32 = null;
+            BitmapData ds = null, dt = null;
             try
             {
+                src32 = Ensure32bppArgb(source);
+                tpl32 = Ensure32bppArgb(template);
+                int sw = src32.Width, sh = src32.Height;
+                int tw = tpl32.Width, th = tpl32.Height;
+                var samples = BuildGridSamples(tw, th, gridSampleStep, maxSamplePoints);
+                var rectS = new Rectangle(0, 0, sw, sh);
+                var rectT = new Rectangle(0, 0, tw, th);
                 ds = src32.LockBits(rectS, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
                 dt = tpl32.LockBits(rectT, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
 
@@ -497,8 +492,8 @@ namespace KakaotalkBot
                 int sBytes = Math.Abs(sStride) * sh;
                 int tBytes = Math.Abs(tStride) * th;
 
-                byte[] s = new byte[sBytes];
-                byte[] t = new byte[tBytes];
+                byte[] s = GetComparisonBuffer(ref sourceBuffer, sBytes);
+                byte[] t = GetComparisonBuffer(ref templateBuffer, tBytes);
 
                 Marshal.Copy(ds.Scan0, s, 0, sBytes);
                 Marshal.Copy(dt.Scan0, t, 0, tBytes);
@@ -540,10 +535,8 @@ namespace KakaotalkBot
                 if (dt != null) tpl32.UnlockBits(dt);
                 if (ds != null) src32.UnlockBits(ds);
 
-                src32.Dispose();
-                src32 = null;
-                tpl32.Dispose();
-                tpl32 = null;
+                if (src32 != null && !ReferenceEquals(src32, source)) src32.Dispose();
+                if (tpl32 != null && !ReferenceEquals(tpl32, template)) tpl32.Dispose();
             }
         }
 
@@ -642,15 +635,29 @@ namespace KakaotalkBot
 
         private static int AbsDiff(byte a, byte b) => a > b ? a - b : b - a;
 
+        // 한 입력 스레드에서 반복 비교할 때 대형 배열을 매번 할당하지 않습니다.
+        [ThreadStatic] private static byte[] sourceBuffer;
+        [ThreadStatic] private static byte[] templateBuffer;
+        private static byte[] GetComparisonBuffer(ref byte[] buffer, int length)
+        {
+            const int limit = 16 * 1024 * 1024;
+            if (length > limit) return new byte[length];
+            if (buffer == null || buffer.Length < length) buffer = new byte[length];
+            return buffer;
+        }
+
         private static Bitmap Ensure32bppArgb(Bitmap src)
         {
             if (src.PixelFormat == PixelFormat.Format32bppArgb)
-                return (Bitmap)src.Clone();
+                return src;
 
             var bmp = new Bitmap(src.Width, src.Height, PixelFormat.Format32bppArgb);
-            using (var g = Graphics.FromImage(bmp))
-                g.DrawImage(src, 0, 0, src.Width, src.Height);
-            return bmp;
+            try
+            {
+                using (var g = Graphics.FromImage(bmp)) g.DrawImage(src, 0, 0, src.Width, src.Height);
+                return bmp;
+            }
+            catch { bmp.Dispose(); throw; }
         }
 
         private static int ClampInt(int v, int min, int max)

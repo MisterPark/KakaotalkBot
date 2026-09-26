@@ -121,6 +121,7 @@ namespace KakaotalkBot
             updating = true;
             try
             {
+                DelayDiagnostics.RecordHealth(commands.Count, quizAnswers.Count);
                 UpdateInternally();
                 if (IsBotRunning) voiceRoomBot.Update();
                 nextProcessingAttempt = DateTime.MinValue;
@@ -218,7 +219,7 @@ namespace KakaotalkBot
             if (receiver == null) return;
             ChatMessage chat;
             bool changed = false;
-            for (int i = 0; i < 128 && commands.Count < 256 && receiver.TryRead(out chat); i++)
+            for (int i = 0; i < 128 && commands.Count < 256 && quizAnswers.Count < 256 && receiver.TryRead(out chat); i++)
             {
                 changed |= HandleIncomingMessage(chat);
             }
@@ -318,17 +319,10 @@ namespace KakaotalkBot
 
         private void ProcessQuizAnswer(long authorId, string nickname, string answer, long logId)
         {
-            QuizAnswer quizAnswer = new QuizAnswer();
-            quizAnswer.AuthorId = authorId;
-            quizAnswer.LogId = logId;
-            quizAnswer.Nickname = nickname;
-            quizAnswer.Answer = answer;
-            quizAnswers.Enqueue(quizAnswer);
-
-            if(Database.Instance.FindUser(authorId,out User user))
-            {
-                user.Contribution += 1;
-            }
+            if (Database.Instance.FindUser(authorId, out User user)) user.Contribution += 1;
+            // 퀴즈가 없을 때 일반 채팅을 쌓아두지 않습니다. 명령문도 정답 후보에서 제외합니다.
+            if (Database.Instance.GetCurrentQuiz() == null || answer.StartsWith("/", StringComparison.Ordinal)) return;
+            quizAnswers.Enqueue(new QuizAnswer { AuthorId = authorId, LogId = logId, Nickname = nickname, Answer = answer });
         }
 
         // 명령어 목록과 같이 제목 다음에 폭 없는 공백을 넣어 긴 메시지 접힘을 유도합니다.
@@ -786,6 +780,7 @@ namespace KakaotalkBot
             Quiz quiz = Database.Instance.GetCurrentQuiz();
             if (quiz == null)
             {
+                quizAnswers.Clear();
                 return;
             }
 

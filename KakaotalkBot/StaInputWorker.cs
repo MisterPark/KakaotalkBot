@@ -10,15 +10,20 @@ namespace KakaotalkBot
     internal sealed class StaInputWorker
     {
         internal static readonly StaInputWorker Instance = new StaInputWorker();
-        private readonly BlockingCollection<Action> queue = new BlockingCollection<Action>(256);
+        private readonly BlockingCollection<Action> queue;
         private readonly Thread thread;
 
-        private StaInputWorker()
+        private StaInputWorker() : this(256) { }
+
+        internal StaInputWorker(int capacity)
         {
+            queue = new BlockingCollection<Action>(capacity);
             thread = new Thread(Run) { IsBackground = true, Name = "카카오톡 입력 STA" };
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
         }
+
+        internal int PendingCount { get { return queue.Count; } }
 
         internal bool IsCurrent { get { return Thread.CurrentThread == thread; } }
 
@@ -36,12 +41,14 @@ namespace KakaotalkBot
             Action work = () =>
             {
                 long started = System.Diagnostics.Stopwatch.GetTimestamp();
-                DelayDiagnostics.Record("input-queue", queuedAt);
+                DelayDiagnostics.Record("input-queue:" + action.Method.Name, queuedAt);
                 try { result.SetResult(action()); }
                 catch (Exception error) { result.SetException(error); }
-                finally { DelayDiagnostics.Record("input-action", started); }
+                finally { DelayDiagnostics.Record("input-action:" + action.Method.Name, started); }
             };
-            if (!queue.TryAdd(work)) throw new InvalidOperationException("입력 작업이 너무 많이 대기 중입니다.");
+            // 큐 포화는 정상적인 대기 상태입니다. 빈자리가 생길 때까지 생산자를 기다리게 합니다.
+            // 무제한 적재·작업 누락 없이 기존 입력 순서를 유지합니다. 종료 후 접수는 기존대로 거부합니다.
+            queue.Add(work);
             return result.Task.GetAwaiter().GetResult();
         }
 
@@ -66,6 +73,34 @@ namespace KakaotalkBot
     internal static class DelayDiagnostics
     {
         private static readonly object Gate = new object();
+        private static long nextHealth;
+        internal static void RecordHealth(int commands, int answers)
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (now < Interlocked.Read(ref nextHealth)) return;
+            Interlocked.Exchange(ref nextHealth, now + 60 * System.Diagnostics.Stopwatch.Frequency);
+            try
+            {
+                using (var process = System.Diagnostics.Process.GetCurrentProcess())
+                {
+                    string row = DateTimeOffset.Now.ToString("O") + " privateMB=" + (process.PrivateMemorySize64 / 1048576) +
+                        " managedMB=" + (GC.GetTotalMemory(false) / 1048576) + " handles=" + process.HandleCount +
+                        " threads=" + process.Threads.Count + " commands=" + commands + " quizAnswers=" + answers +
+                        " input=" + StaInputWorker.Instance.PendingCount + " gc2=" + GC.CollectionCount(2) + "\r\n";
+                    lock (Gate)
+                    {
+                        string path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "runtime-health.log");
+                        if (System.IO.File.Exists(path) && new System.IO.FileInfo(path).Length > 1024 * 1024)
+                            System.IO.File.WriteAllText(path, "");
+                        System.IO.File.AppendAllText(path, row);
+                    }
+                }
+            }
+            catch (System.IO.IOException) { }
+            catch (UnauthorizedAccessException) { }
+            catch (System.ComponentModel.Win32Exception) { }
+        }
+
         internal static void Record(string stage, long started)
         {
             double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - started) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;

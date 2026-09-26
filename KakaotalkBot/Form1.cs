@@ -119,6 +119,7 @@ namespace KakaotalkBot
             button2.Enabled = !bot.IsReceiverStopping && catalogTask == null && bot.SelectedRoom != null;
             button2.Text = bot.IsBotRunning ? "DB 수신 중지" : bot.IsReceiverStopping ? "수신 종료 중…" : "DB 수신 시작";
             if (bot.HasReceiver && catalogTask == null) databaseStatus.Text = bot.ReceiveStatus;
+            if (ScreenPixelDetector.Instance.LastError != null) databaseStatus.Text = ScreenPixelDetector.Instance.LastError;
             if (News.LastRefreshError != null) databaseStatus.Text = News.LastRefreshError;
             if (Database.Instance.ContentRefreshError != null) databaseStatus.Text = Database.Instance.ContentRefreshError;
             if (databaseError != null) databaseStatus.Text = databaseError;
@@ -389,12 +390,12 @@ namespace KakaotalkBot
             if (bot.IsBotRunning && string.IsNullOrEmpty(bot.TargetWindow) == false)
             {
                 string room = bot.TargetWindow;
-                StaInputWorker.Instance.Invoke(() =>
+                try
                 {
-                    WindowsMacro.Instance.CloseChatRoom(room);
-                    Thread.Sleep(3000);
-                    WindowsMacro.Instance.OpenChatRoom(room);
-                });
+                    if (bot.SelectedRoom != null && !WindowsMacro.Instance.RecycleChatRoom(room, bot.SelectedRoom.ProcessId))
+                        databaseError = "작성 중인 내용이 있어 채팅창 재열기를 보류했습니다.";
+                }
+                catch (Exception error) { databaseError = "채팅창 재열기 실패: " + error.Message; }
             }
 
         }
@@ -409,6 +410,8 @@ namespace KakaotalkBot
             Application.Exit();
         }
 
+        private Action pixelClickListener;
+
         private void button8_Click(object sender, EventArgs e)
         {
             int x = (int)numericUpDown1.Value;
@@ -421,19 +424,21 @@ namespace KakaotalkBot
             else
             {
 
-                ScreenPixelDetector.Instance.AddListener(() =>
+                if (pixelClickListener != null) ScreenPixelDetector.Instance.RemoveListener(pixelClickListener);
+                long session = ScreenPixelDetector.Instance.Generation + 1;
+                pixelClickListener = () =>
                 {
                     StaInputWorker.Instance.Invoke(() =>
                     {
-                        if (!ScreenPixelDetector.Instance.IsRunning) return;
+                        if (!ScreenPixelDetector.Instance.IsCurrentSession(session)) return;
                         WindowsMacro.Instance.SetCursor(x, y);
                         WindowsMacro.Instance.ClickLeft();
                         Thread.Sleep(50);
                         WindowsMacro.Instance.ClickLeft();
                         Thread.Sleep(50);
                     });
-                });
-
+                };
+                ScreenPixelDetector.Instance.AddListener(pixelClickListener);
                 ScreenPixelDetector.Instance.Start(x, y);
             }
 
