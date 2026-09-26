@@ -8,6 +8,16 @@ class VoiceRoomWorkerTests
     static void Check(bool ok, string message) { if (!ok) throw new Exception(message); Console.WriteLine("PASS " + message); }
     static void Main()
     {
+        var policy = typeof(VoiceRoomBot).GetMethod("IsClickWindowAllowed", BindingFlags.Static | BindingFlags.NonPublic);
+        Func<int, int, int, int, uint, uint, string, int, bool> allowed = (root, hit, owner, hitOwner, pid, hitPid, cls, foreground) =>
+            (bool)policy.Invoke(null, new object[] { new IntPtr(root), new IntPtr(hit), new IntPtr(owner), new IntPtr(hitOwner), pid, hitPid, cls, new IntPtr(foreground) });
+        Check(allowed(1, 1, 1, 1, 10, 10, "", 1), "보이스룸 본체 클릭 허용");
+        Check(allowed(1, 2, 1, 1, 10, 10, "", 1), "별도 HWND인 소유 수락창 클릭 허용");
+        Check(allowed(1, 2, 1, 2, 10, 10, "#32768", 1), "보이스룸의 전경 컨텍스트 메뉴 허용");
+        Check(!allowed(1, 2, 1, 2, 10, 20, "#32768", 1), "다른 프로그램의 메뉴 차단");
+        Check(!allowed(1, 2, 1, 2, 10, 10, "", 2), "별도 채팅창이 가린 좌표 차단");
+        Check(!allowed(1, 2, 1, 2, 10, 10, "#32768", 2), "다른 방의 전경 메뉴 차단");
+        Check(!allowed(1, 0, 1, 0, 10, 0, "", 1), "유효한 창 없는 좌표 차단");
         var entered = new ManualResetEventSlim();
         var release = new ManualResetEventSlim();
         int calls = 0, recognitionThread = 0;

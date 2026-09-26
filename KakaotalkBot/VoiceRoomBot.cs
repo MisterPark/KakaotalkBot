@@ -17,6 +17,8 @@ namespace KakaotalkBot
         private readonly Action recognitionAction;
         private volatile bool disposed;
         private volatile string recognitionError;
+        private volatile string inputStatus;
+        public string InputStatus { get { return inputStatus; } }
         public string RecognitionError { get { return recognitionError; } }
         private int clickPending;
         private bool clickProposed;
@@ -202,34 +204,55 @@ namespace KakaotalkBot
             {
                 try
                 {
-                    if (disposed || !IsBotRunning || session != Interlocked.Read(ref inputSession) || Age(queued) > 500) return;
+                    if (disposed || !IsBotRunning || session != Interlocked.Read(ref inputSession)) return;
+                    if (frame == null && Age(queued) > 1500) { inputStatus = "입력 대기로 좌표 클릭 갱신 중"; return; }
                     if (frame != null)
                     {
                         IntPtr current = frame.Voice ? WindowsMacro.Instance.FindVoiceRoomWindow()
                             : WindowsMacro.Instance.FindTargetWindow(frame.Target);
-                        if (frame.Session != session || Age(frame.Tick) > 1500 || current == IntPtr.Zero || current != frame.Handle
+                        if (frame.Session != session || current == IntPtr.Zero || current != frame.Handle
                             || WindowsMacro.Instance.GetWindowPos(current) != frame.Position
-                            || WindowsMacro.Instance.GetWindowSize(current) != frame.Size) return;
-                        // 화면 캡처 기반 좌표이므로 다른 창이 가린 위치에는 클릭하지 않습니다.
+                            || WindowsMacro.Instance.GetWindowSize(current) != frame.Size)
+                        { inputStatus = "대상 창 변경으로 재인식 중"; return; }
+                        if (Age(frame.Tick) > 1500) { inputStatus = "인식 결과 만료로 재인식 중"; return; }
+                        // 수락창과 진행자 메뉴는 보이스룸과 HWND가 다른 소유 팝업일 수 있습니다.
+                        // 다른 프로그램이나 별도 카카오톡 창을 허용하지 않고 소유 관계를 검사합니다.
                         IntPtr pointWindow = WindowFromPoint(point);
-                        if (GetAncestor(pointWindow, 2) != GetAncestor(current, 2))
-                        {
-                            var className = new System.Text.StringBuilder(64);
-                            GetClassName(pointWindow, className, className.Capacity);
-                            if (className.ToString() != "#32768" || GetAncestor(GetForegroundWindow(), 2) != GetAncestor(current, 2)) return;
-                        }
+                        IntPtr root = GetAncestor(current, 2);
+                        IntPtr pointRoot = GetAncestor(pointWindow, 2);
+                        uint targetProcess, pointProcess;
+                        GetWindowThreadProcessId(current, out targetProcess);
+                        GetWindowThreadProcessId(pointWindow, out pointProcess);
+                        var className = new System.Text.StringBuilder(64);
+                        GetClassName(pointWindow, className, className.Capacity);
+                        bool allowed = IsClickWindowAllowed(root, pointRoot,
+                            GetAncestor(current, 3), GetAncestor(pointWindow, 3),
+                            targetProcess, pointProcess, className.ToString(),
+                            GetAncestor(GetForegroundWindow(), 3));
+                        if (!allowed) { inputStatus = "클릭 위치를 다른 창이 가려 재인식 대기 중"; return; }
                     }
                     else if (!IsClickMacroRunning) return;
+                    inputStatus = null;
                     WindowsMacro.Instance.SetCursor(point.X, point.Y);
                     if (right) WindowsMacro.Instance.ClickRight(); else WindowsMacro.Instance.ClickLeft();
                     if (presenter) Interlocked.Exchange(ref presenterOpened, Tick);
                 }
                 finally { Interlocked.Exchange(ref clickPending, 0); }
             });
-            if (!posted) Interlocked.Exchange(ref clickPending, 0);
+            if (!posted) { inputStatus = "입력 큐 접수 대기 중"; Interlocked.Exchange(ref clickPending, 0); }
             return posted;
         }
 
+        internal static bool IsClickWindowAllowed(IntPtr root, IntPtr pointRoot,
+            IntPtr owner, IntPtr pointOwner, uint process, uint pointProcess, string windowClass, IntPtr foregroundOwner)
+        {
+            if (root == IntPtr.Zero || pointRoot == IntPtr.Zero || process == 0 || process != pointProcess) return false;
+            if (root == pointRoot) return true;
+            if (owner != IntPtr.Zero && owner == pointOwner) return true;
+            return windowClass == "#32768" && owner != IntPtr.Zero && foregroundOwner == owner;
+        }
+
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, System.Text.StringBuilder name, int capacity);
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(Point point);
@@ -281,7 +304,7 @@ namespace KakaotalkBot
             if (size.X <= 0 || size.Y <= 0) return null;
             Rectangle area = region == 2
                 ? new Rectangle(pos.X + (size.X - 260) / 2, pos.Y + (size.Y - 120) / 2, 130, 120)
-                : new Rectangle(pos.X, pos.Y, size.X, Math.Min(size.Y, region == 3 ? 150 : modifiedY));
+                : new Rectangle(pos.X, pos.Y, size.X, region == 3 ? 150 : modifiedY);
             var bitmap = CaptureScreen(area);
             frame = new Frame { Handle = handle, Position = pos, Size = size, Origin = area.Location,
                 Tick = Tick, Session = cycleSession, Voice = voice, Target = target };

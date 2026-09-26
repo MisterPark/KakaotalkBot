@@ -122,6 +122,7 @@ namespace KakaotalkBot
             button2.Text = bot.IsBotRunning ? "DB 수신 중지" : bot.IsReceiverStopping ? "수신 종료 중…" : "DB 수신 시작";
             if (bot.HasReceiver && catalogTask == null) databaseStatus.Text = bot.ReceiveStatus;
             if (ScreenPixelDetector.Instance.LastError != null) databaseStatus.Text = ScreenPixelDetector.Instance.LastError;
+            if (voiceRoomBot.IsBotRunning && voiceRoomBot.InputStatus != null) databaseStatus.Text = "보이스룸: " + voiceRoomBot.InputStatus;
             if (voiceRoomBot.RecognitionError != null) databaseStatus.Text = "보이스룸 인식 실패: " + voiceRoomBot.RecognitionError;
             if (StaInputWorker.Instance.BackgroundError != null) databaseStatus.Text = "보조 입력 작업 실패: " + StaInputWorker.Instance.BackgroundError;
             if (News.LastRefreshError != null) databaseStatus.Text = News.LastRefreshError;
