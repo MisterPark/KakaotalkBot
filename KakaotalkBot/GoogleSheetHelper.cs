@@ -296,16 +296,28 @@ namespace KakaotalkBot
             {
                 var rows = ReadAllFromSheet("상식퀴즈");
                 var expected = new[] { "질문", "분류", "난이도", "답", "힌트", "해설" };
-                if (rows.Count == 0 || !rows[0].SequenceEqual(expected))
+                if (rows.Count == 0 || !rows[0].Take(6).SequenceEqual(expected) || rows[0].Count > 7 || (rows[0].Count == 7 && rows[0][6] != "출제횟수"))
                     throw new InvalidDataException("상식퀴즈 시트의 열 구성이 바뀌었습니다.");
                 var remote = rows.Skip(1).Select(Quiz.ToCommonSense).ToList();
                 var merged = QuizChangeStore.Merge(remote, changes);
-                if (changes.Length == 0) return remote;
+                if (changes.Length == 0 && rows[0].Count == 7) return remote;
                 var api = GetSheetsService();
                 var metadata = api.Spreadsheets.Get(sheetId);
-                metadata.Fields = "sheets(properties(sheetId,title))";
-                int tabId = ExecuteRead(() => ExecuteBoundedRead(metadata)).Sheets.Single(s => s.Properties.Title == "상식퀴즈").Properties.SheetId.Value;
+                metadata.Fields = "sheets(properties(sheetId,title,gridProperties(columnCount)))";
+                var properties = ExecuteRead(() => ExecuteBoundedRead(metadata)).Sheets.Single(s => s.Properties.Title == "상식퀴즈").Properties;
+                int tabId = properties.SheetId.Value;
                 var requests = new List<Request>();
+                if ((properties.GridProperties.ColumnCount ?? 0) < 7)
+                    requests.Add(new Request { AppendDimension = new AppendDimensionRequest { SheetId = tabId, Dimension = "COLUMNS", Length = 7 - properties.GridProperties.ColumnCount.Value } });
+                if (rows[0].Count < 7)
+                    requests.Add(QuizCountCell(tabId, 0, new ExtendedValue { StringValue = "출제횟수" }));
+                // 삭제로 행 번호가 이동하기 전에 횟수 셀만 수정해 시트에서 편집한 본문을 보존합니다.
+                for (int i = 0; i < remote.Count; i++)
+                {
+                    var updated = merged.FirstOrDefault(q => QuizChange.SameKey(q, remote[i]));
+                    if (updated != null && updated.AskedCount != remote[i].AskedCount)
+                        requests.Add(QuizCountCell(tabId, i + 1, new ExtendedValue { StringValue = updated.AskedCount.ToString(System.Globalization.CultureInfo.InvariantCulture) }));
+                }
                 // 행 이동 영향이 없도록 아래 행부터 삭제하고, 새 행은 뒤에 추가합니다.
                 for (int i = remote.Count - 1; i >= 0; i--)
                 {
@@ -314,7 +326,7 @@ namespace KakaotalkBot
                     requests.Add(new Request { DeleteDimension = new DeleteDimensionRequest
                     { Range = new DimensionRange { SheetId = tabId, Dimension = "ROWS", StartIndex = i + 1, EndIndex = i + 2 } } });
                 }
-                var appended = changes.Where(c => c.After != null && !remote.Any(q => QuizChange.SameKey(q, c.After)))
+                var appended = changes.Where(c => c.After != null && !c.CountOnly && !remote.Any(q => QuizChange.SameKey(q, c.After)))
                     .Select(c => new RowData { Values = c.After.ToRow().Select(v => new CellData { UserEnteredValue = new ExtendedValue { StringValue = Convert.ToString(v) } }).ToList() }).ToList();
                 if (appended.Count > 0) requests.Add(new Request { AppendCells = new AppendCellsRequest { SheetId = tabId, Fields = "userEnteredValue", Rows = appended } });
                 if (requests.Count > 0)
@@ -328,6 +340,16 @@ namespace KakaotalkBot
                 }
                 return merged;
             }
+        }
+
+        private static Request QuizCountCell(int tabId, int row, ExtendedValue value)
+        {
+            return new Request { UpdateCells = new UpdateCellsRequest
+            {
+                Range = new GridRange { SheetId = tabId, StartRowIndex = row, EndRowIndex = row + 1, StartColumnIndex = 6, EndColumnIndex = 7 },
+                Fields = "userEnteredValue",
+                Rows = new List<RowData> { new RowData { Values = new List<CellData> { new CellData { UserEnteredValue = value } } } }
+            } };
         }
 
         public void WriteToSheet(string sheetName, List<string> messages)
@@ -405,7 +427,7 @@ namespace KakaotalkBot
             {
                 var service = GetSheetsService();
                 // 문제·주제에서 실제 사용하는 열만 요청해 응답 크기를 줄입니다.
-                var range = sheetName == "상식퀴즈" ? "'상식퀴즈'!A:F" :
+                var range = sheetName == "상식퀴즈" ? "'상식퀴즈'!A:G" :
                     sheetName == "Topic" ? "'Topic'!A:D" : "'" + sheetName.Replace("'", "''") + "'";
                 var request = service.Spreadsheets.Values.Get(sheetId, range);
                 values = ExecuteRead(() => ExecuteBoundedRead(request)).Values;

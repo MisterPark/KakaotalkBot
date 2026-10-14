@@ -670,14 +670,22 @@ namespace KakaotalkBot
             if (currentAnswerIndex >= 0) return false;
             List<int> indexes = null;
             if (category != null && !quizCategories.TryGetValue(category.Trim(), out indexes)) return false;
-            int count = indexes == null ? commonSenses.Count : indexes.Count;
+            var candidates = Quiz.LeastAsked(commonSenses, indexes);
+            int count = candidates.Count;
             if (count == 0) return false;
             // 음수 오버플로와 나머지 연산의 선택 편향을 피합니다.
             uint value;
             ulong limit = (1UL << 32) / (uint)count * (uint)count;
             do { random.GetBytes(randomBytes); value = BitConverter.ToUInt32(randomBytes, 0); } while (value >= limit);
             int selected = (int)(value % (uint)count);
-            currentAnswerIndex = indexes == null ? selected : indexes[selected];
+            int nextIndex = candidates[selected];
+            var before = commonSenses[nextIndex];
+            var after = QuizChange.Copy(before);
+            after.AskedCount = checked(before.AskedCount + 1);
+            // 저장 실패 시 출제를 시작하지 않아 메모리와 복구 기록이 어긋나지 않게 합니다.
+            if (quizChanges != null) quizChanges.Stage(before, after);
+            before.AskedCount = after.AskedCount;
+            currentAnswerIndex = nextIndex;
             return true;
         }
 

@@ -13,6 +13,23 @@ namespace KakaotalkBot
         public string Answer = string.Empty;
         public string Hint = string.Empty;
         public string Explanation = string.Empty;
+        public long AskedCount;
+
+        // 전체 정렬 없이 최소 출제 횟수인 원본 인덱스만 모읍니다.
+        internal static List<int> LeastAsked(List<Quiz> quizzes, List<int> indexes)
+        {
+            var candidates = new List<int>();
+            long minimum = long.MaxValue;
+            int count = indexes == null ? quizzes.Count : indexes.Count;
+            for (int i = 0; i < count; i++)
+            {
+                int index = indexes == null ? i : indexes[i];
+                long value = quizzes[index].AskedCount;
+                if (value < minimum) { minimum = value; candidates.Clear(); }
+                if (value == minimum) candidates.Add(index);
+            }
+            return candidates;
+        }
 
         public static bool IsQuizCommand(string command)
         {
@@ -98,7 +115,7 @@ namespace KakaotalkBot
 
         public List<object> ToRow()
         {
-            return new List<object>() { Question, Category, Difficulty, Answer, Hint, Explanation };
+            return new List<object>() { Question, Category, Difficulty, Answer, Hint, Explanation, AskedCount };
         }
 
         public static Quiz ToCommonSense(List<string> list)
@@ -109,7 +126,10 @@ namespace KakaotalkBot
             cs.Difficulty = list[2];
             cs.Answer = list[3];
             cs.Hint = list[4];
-            cs.Explanation = list[5];
+            cs.Explanation = list.Count > 5 ? list[5] : "";
+            if (list.Count > 6 && !string.IsNullOrWhiteSpace(list[6]) &&
+                (!long.TryParse(list[6], out cs.AskedCount) || cs.AskedCount < 0))
+                throw new InvalidDataException("퀴즈 출제횟수는 0 이상의 정수여야 합니다.");
 
             return cs;
         }
@@ -119,11 +139,12 @@ namespace KakaotalkBot
     {
         public string Id;
         public Quiz Before, After;
+        internal bool CountOnly { get { return Before != null && After != null && SameValue(Before, After); } }
         internal Quiz Target { get { return After ?? Before; } }
         internal static bool SameKey(Quiz a, Quiz b)
         { return a != null && b != null && a.Category.Trim() == b.Category.Trim() && a.Question.Trim() == b.Question.Trim(); }
         internal static bool SameValue(Quiz a, Quiz b)
-        { return a == null || b == null ? a == b : a.ToRow().SequenceEqual(b.ToRow()); }
+        { return a == null || b == null ? a == b : a.ToRow().Take(6).SequenceEqual(b.ToRow().Take(6)); }
         internal static Quiz Copy(Quiz q)
         { return q == null ? null : Quiz.ToCommonSense(q.ToRow().Select(Convert.ToString).ToList()); }
         internal QuizChange Copy()
@@ -159,7 +180,7 @@ namespace KakaotalkBot
             var next = changes.Select(c => c.Copy()).ToList();
             var old = next.FirstOrDefault(c => QuizChange.SameKey(c.Target, after ?? before));
             if (old != null) next.Remove(old);
-            next.Add(new QuizChange { Id = Guid.NewGuid().ToString("N"), Before = QuizChange.Copy(old == null ? before : old.Before ?? before), After = QuizChange.Copy(after) });
+            next.Add(new QuizChange { Id = Guid.NewGuid().ToString("N"), Before = QuizChange.Copy(old == null ? before : old.Before ?? (after == null ? before : null)), After = QuizChange.Copy(after) });
             Save(next);
         }
         internal void Confirm(QuizChange[] sent)
@@ -179,6 +200,11 @@ namespace KakaotalkBot
             var result = new List<Quiz>(source);
             foreach (var c in changes)
             {
+                if (c.CountOnly)
+                {
+                    result = Merge(result, new[] { c });
+                    continue;
+                }
                 result.RemoveAll(q => QuizChange.SameKey(q, c.Target));
                 if (c.After != null) result.Add(QuizChange.Copy(c.After));
             }
@@ -187,14 +213,16 @@ namespace KakaotalkBot
         // 서버 상태가 이미 목표와 같으면 이전 요청은 반영된 것으로 간주합니다.
         internal static List<Quiz> Merge(List<Quiz> remote, QuizChange[] pending)
         {
-            var result = new List<Quiz>(remote);
+            var result = remote.Select(QuizChange.Copy).ToList();
             foreach (var c in pending)
             {
                 var matches = result.Where(q => QuizChange.SameKey(q, c.Target)).ToList();
                 if (c.After != null)
                 {
                     // 시트에 같은 분류·문제가 있으면 중복 등록하지 않고 시트의 최신 내용을 사용합니다.
-                    if (matches.Count == 0) result.Add(QuizChange.Copy(c.After));
+                    if (matches.Count == 0 && !c.CountOnly) result.Add(QuizChange.Copy(c.After));
+                    // 출제 기록의 재전송은 누적 덧셈 대신 목표값 비교로 중복 집계를 막습니다.
+                    foreach (var match in matches) match.AskedCount = Math.Max(match.AskedCount, c.After.AskedCount);
                 }
                 else
                 {

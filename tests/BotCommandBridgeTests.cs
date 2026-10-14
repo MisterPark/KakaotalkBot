@@ -218,12 +218,16 @@ internal static class BotCommandBridgeTests
                 if (!Database.Instance.TrySetNextCommonSense(category) || Database.Instance.GetCurrentQuiz().Category.Trim() != category)
                     throw new Exception("분류별 출제 오류");
                 var current = Database.Instance.GetCurrentQuiz();
+                long issuedCount = current.AskedCount;
                 if (Database.Instance.TrySetNextCommonSense("경제") || !object.ReferenceEquals(current, Database.Instance.GetCurrentQuiz()))
                     throw new Exception("진행 중인 문제 덮어쓰기 오류");
+                if (current.AskedCount != issuedCount) throw new Exception("진행 중 호출이 횟수를 증가시킴");
             }
             Database.Instance.ResetCommonSense();
             if (Database.Instance.TrySetNextCommonSense("없는분류") || Database.Instance.GetCurrentQuiz() != null)
                 throw new Exception("없는 분류에서 전체 문제 출제 오류");
+            var scienceCounts = Database.Instance.CommonSenses.Where(q => q.Category.Trim() == "과학").Select(q => q.AskedCount).ToArray();
+            if (scienceCounts.Length != 2 || scienceCounts.Any(c => c != 50)) throw new Exception("100회 출제가 두 문제에 균등 분배되지 않음");
             if (!Database.Instance.GetQuizCategoryHelp().Contains("/과학퀴즈 — 2문제")) throw new Exception("분류 목록 오류");
             if (!Database.Instance.TrySetNextCommonSense(null)) throw new Exception("전체 출제 오류");
             Database.Instance.ResetCommonSense();
@@ -231,7 +235,7 @@ internal static class BotCommandBridgeTests
             string registrationError;
             if (!Quiz.TryParseRegistration("/퀴즈등록 과학 | 하 | 물의 화학식은? | H2O | 알파벳과 숫자 | 수소 두 개와 산소 한 개", out registered, out registrationError))
                 throw new Exception("문제 등록 파싱 실패");
-            if (!registered.ToRow().Select(Convert.ToString).SequenceEqual(new[] { "물의 화학식은?", "과학", "하", "H2O", "알파벳과 숫자", "수소 두 개와 산소 한 개" }))
+            if (!registered.ToRow().Select(Convert.ToString).SequenceEqual(new[] { "물의 화학식은?", "과학", "하", "H2O", "알파벳과 숫자", "수소 두 개와 산소 한 개", "0" }))
                 throw new Exception("시트 등록 열 순서 오류");
             foreach (string invalid in new[] { "/퀴즈등록", "/퀴즈등록 과학|하|문제|답|힌트", "/퀴즈등록 과학|하|문제||힌트|해설", "/퀴즈등록 과학|하|문제|답|힌트|해설|초과", "/퀴즈등록 과학|하|문제|답|힌트|해설\n다음줄" })
                 if (Quiz.TryParseRegistration(invalid, out registered, out registrationError)) throw new Exception("잘못된 등록 입력 허용");
