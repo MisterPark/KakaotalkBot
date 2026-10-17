@@ -106,6 +106,16 @@ namespace KakaotalkBot
             return automaticQuiz && automaticQuizTimer.Check(elapsedMilliseconds) &&
                 Database.Instance.GetCurrentQuiz() == null;
         }
+        // 조회는 출제 횟수나 다음 자동 출제 시각을 변경하지 않습니다.
+        internal string GetAutomaticQuizStatus()
+        {
+            string current = Database.Instance.GetCommonSenseText();
+            if (!string.IsNullOrEmpty(current)) return current;
+            long seconds = (Math.Max(0L, automaticQuizTimer.TimeLeft) + 999L) / 1000L;
+            return "현재 출제된 퀴즈가 없습니다.\n다음 퀴즈 출제까지 " +
+                (seconds / 60) + "분 " + (seconds % 60) + "초 남았습니다.";
+        }
+
         internal bool AllowsQuizRequest(string command)
         {
             return command == "/퀴즈목록" || !automaticQuiz;
@@ -644,7 +654,7 @@ namespace KakaotalkBot
                 if (command.Keyword == "/퀴즈목록")
                     WindowsMacro.Instance.SendTextToChatroom(TargetWindow, Database.Instance.GetQuizCategoryHelp());
                 else if (!AllowsQuizRequest(command.Keyword))
-                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "퀴즈는 현재 5분마다 자동 출제됩니다. 명령어로 호출할 수 없습니다.");
+                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, GetAutomaticQuizStatus());
                 else
                     ProcessCommonSense(command.Keyword == "/상식퀴즈" || command.Keyword == "/퀴즈" ? null :
                         command.Keyword.Substring(1, command.Keyword.Length - 3).Trim());

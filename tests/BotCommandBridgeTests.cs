@@ -249,6 +249,19 @@ internal static class BotCommandBridgeTests
             advance(200000); bot.AutomaticQuiz = false; bot.AutomaticQuiz = true;
             if (advance(100000) || !advance(200000)) throw new Exception("모드 변경 시 5분 대기 초기화 오류");
             if (!advance(900000) || advance(0)) throw new Exception("지연된 자동 출제 몰아서 실행");
+            var statusMethod = typeof(Bot).GetMethod("GetAutomaticQuizStatus", flags);
+            Func<string> quizStatus = () => (string)statusMethod.Invoke(bot, null);
+            if (!quizStatus().Contains("5분 0초")) throw new Exception("자동 출제 대기시간 초기 표시 오류");
+            advance(61001);
+            if (!quizStatus().Contains("3분 59초") || !quizStatus().Contains("3분 59초")) throw new Exception("남은 시간 계산 또는 반복 조회 오류");
+            Database.Instance.CurrentAnswerIndex = 0;
+            var shownQuiz = Database.Instance.GetCurrentQuiz();
+            long shownCount = shownQuiz.AskedCount;
+            if (quizStatus() != Database.Instance.GetCommonSenseText() || shownQuiz.AskedCount != shownCount)
+                throw new Exception("현재 퀴즈 조회 또는 출제횟수 보존 오류");
+            Database.Instance.ResetCommonSense();
+            if (!quizStatus().Contains("3분 59초") || advance(238998) || !advance(1))
+                throw new Exception("퀴즈 조회로 자동 출제 주기가 변경됨");
             bot.AutomaticQuiz = false;
             if (!(bool)allowQuiz.Invoke(bot, new object[] { "/퀴즈" })) throw new Exception("수동 모드 명령 복구 실패");
             Console.WriteLine("PASS: quiz mode, five-minute boundary, command restriction, active question, mode reset and delayed tick");

@@ -183,7 +183,7 @@ namespace KakaotalkBot
             var group = new GroupBox { Text = "퀴즈 출제 모드" };
             group.SetBounds(428, 197, 385, 49);
             var manual = new RadioButton { Text = "명령어 출제", AutoSize = true };
-            var automatic = new RadioButton { Text = "5분마다 자동 (명령 호출 불가)", AutoSize = true };
+            var automatic = new RadioButton { Text = "5분마다 자동 (명령어로 조회)", AutoSize = true };
             manual.Location = new System.Drawing.Point(8, 21);
             automatic.Location = new System.Drawing.Point(125, 21);
             bot.AutomaticQuiz = Settings.Instance.AutomaticQuiz;
@@ -216,7 +216,7 @@ namespace KakaotalkBot
             manual.CheckedChanged += changed;
             automatic.CheckedChanged += changed;
             var tips = new ToolTip(components);
-            tips.SetToolTip(automatic, "봇 수신 시작 또는 자동 모드 전환 후 5분부터 출제합니다. 진행 중인 문제는 기존 제한시간까지 유지합니다.");
+            tips.SetToolTip(automatic, "봇 수신 시작 또는 자동 모드 전환 후 5분부터 출제합니다. 진행 중인 문제는 기존 제한시간까지 유지합니다. 퀴즈 명령은 현재 문제 또는 다음 출제까지 남은 시간을 보여줍니다.");
         }
 
         private void InitializeDatabaseControls()
