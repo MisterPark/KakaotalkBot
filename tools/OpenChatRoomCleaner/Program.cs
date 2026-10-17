@@ -100,7 +100,7 @@ namespace OpenChatRoomCleaner
                             Assert(!middle.ListValid && middle.ListViewportValid,"행 판독 실패와 스크롤 가능한 영역을 분리");
                             var recover=new Workflow();
                             var move=recover.Decide(middle);
-                            Assert(move.Kind==ActionKind.ScrollUp && recover.Stage==Stage.SeekTop,"기존 스크롤 유지 시 인식 대기 대신 위로 이동");
+                            Assert(move.Kind==ActionKind.ScrollUp && recover.Stage==Stage.SeekEdge,"기존 스크롤 유지 시 인식 대기 대신 위로 이동");
                             for(int retry=0;retry<5;retry++){recover.Applied(move);move=recover.Decide(middle);Assert(move.Kind==ActionKind.ScrollUp,"행이 안 읽힌 채 정지해도 유저 클릭/완료 금지");}
                             recover.Applied(move);move=recover.Decide(observed);
                             for(int retry=0;retry<3 && move.Kind==ActionKind.ScrollUp;retry++){recover.Applied(move);move=recover.Decide(observed);}
@@ -175,6 +175,25 @@ namespace OpenChatRoomCleaner
                 d=preview.Decide(new Observation{Confirm=new Rectangle(1,1,20,20)});
                 Assert(d.Kind==ActionKind.PreviewComplete,"자동 시험에서 최종 확인 클릭 금지");preview.Applied(d);Assert(preview.Attempts==0,"자동 시험에서 실제 강퇴 시도 0회");
                 Assert(!Desktop.Apply(null,new Decision(ActionKind.ConfirmRemoval,"차단 시험"),()=>false),"입력 계층도 기본값으로 최종 확인 차단");
+                var reverseRows=new Observation{ListValid=true,ListViewportValid=true,ListHash=123,ScrollPoint=new Point(200,200)};
+                reverseRows.Rows.Add(new Row{Click=new Point(38,80)});
+                reverseRows.Rows.Add(new Row{Click=new Point(38,132),Protected=true});
+                reverseRows.Rows.Add(new Row{Click=new Point(38,184)});
+                reverseRows.Rows.Add(new Row{Click=new Point(38,236),Protected=true});
+                var reverseFlow=new Workflow(RunMode.Preview,true);
+                var reverseDecision=reverseFlow.Decide(reverseRows);
+                Assert(reverseDecision.Kind==ActionKind.ScrollDown,"역순은 목록 맨 아래부터 탐색");
+                for(int i=0;i<3;i++){reverseFlow.Applied(reverseDecision);reverseDecision=reverseFlow.Decide(reverseRows);}
+                Assert(reverseDecision.Kind==ActionKind.Click && reverseDecision.Point==reverseRows.Rows[2].Click,"역순에서 마지막 일반 참여자 선택 및 운영진 제외");
+                reverseFlow.Stage=Stage.ReturnToList;
+                Assert(reverseFlow.Decide(reverseRows).Kind==ActionKind.ScrollDown,"역순 제거 후 하단 목록 다시 인식");
+                reverseFlow=new Workflow(RunMode.Preview,true){Stage=Stage.Scan};
+                reverseDecision=reverseFlow.Decide(protectedList);
+                Assert(reverseDecision.Kind==ActionKind.ScrollUp,"역순 운영진만 보일 때 위로 탐색");
+                for(int i=0;i<3;i++){reverseFlow.Applied(reverseDecision);reverseDecision=reverseFlow.Decide(protectedList);}
+                Assert(reverseDecision.Kind==ActionKind.Complete,"역순 상단 경계 재확인 후 완료");
+                reverseFlow=new Workflow(RunMode.Preview,true){Stage=Stage.Confirm};
+                Assert(reverseFlow.Decide(new Observation{Confirm=new Rectangle(1,1,20,20)}).Kind==ActionKind.PreviewComplete,"역순 시험에서도 최종 확인 금지");
                 File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"test-result.txt"),"PASS: 실제 캡처 "+(args.Length-1)+"장과 좌표/상태 전이 시험 통과. 실제 입력 없음.");return 0;
             }
             catch(Exception e){File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"test-result.txt"),e.ToString());return 1;}
@@ -185,6 +204,7 @@ namespace OpenChatRoomCleaner
     {
         readonly ComboBox rooms=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=320};
         readonly ComboBox mode=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=310};
+        readonly ComboBox direction=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=250};
         readonly Button start=new Button{Text="시작",Width=80};
         readonly Button stop=new Button{Text="중지 (F8)",Width=100};
         readonly Label status=new Label{AutoSize=false,Dock=DockStyle.Top,Height=46,Text="방 선택 → 인식 시험 → 실제 실행"};
@@ -193,10 +213,11 @@ namespace OpenChatRoomCleaner
         Thread worker;volatile bool stopping; string lastStatus;DateTime lastDisplay;
         internal MainForm()
         {
-            Text="오픈채팅 참여자 정리 · 목록창-v6 / 확인 직전 시험";Width=760;Height=440;Font=new Font("맑은 고딕",10);
+            Text="오픈채팅 참여자 정리 · 목록창-v7 / 확인 직전 시험";Width=760;Height=440;Font=new Font("맑은 고딕",10);
             mode.Items.AddRange(new object[]{"인식만 확인 (클릭 없음)","자동 시험 (최종 확인 직전 중지)","실제 내보내기"});mode.SelectedIndex=1;
-            var bar=new FlowLayoutPanel{Dock=DockStyle.Top,Height=85};var refresh=new Button{Text="방 새로고침",AutoSize=true};
-            bar.Controls.AddRange(new Control[]{rooms,refresh,mode,start,stop});Controls.Add(log);Controls.Add(status);Controls.Add(bar);
+            direction.Items.AddRange(new object[]{"정순: 맨 위 → 아래", "역순: 맨 아래 → 위"});direction.SelectedIndex=0;
+            var bar=new FlowLayoutPanel{Dock=DockStyle.Top,Height=115};var refresh=new Button{Text="방 새로고침",AutoSize=true};
+            bar.Controls.AddRange(new Control[]{rooms,refresh,mode,direction,start,stop});Controls.Add(log);Controls.Add(status);Controls.Add(bar);
             refresh.Click+=(s,e)=>RefreshRooms();start.Click+=(s,e)=>Start();stop.Click+=(s,e)=>Stop();
             FormClosing+=(s,e)=>{if(worker!=null&&worker.IsAlive){Stop();e.Cancel=true;Report("중지 처리 후 창을 다시 닫아 주세요.");}};
             FormClosed+=(s,e)=>halt.Dispose();RefreshRooms();
@@ -214,18 +235,20 @@ namespace OpenChatRoomCleaner
         {
             if(worker!=null&&worker.IsAlive)return;var room=rooms.SelectedItem as Window;if(room==null){Report("열린 채팅방을 선택하세요.");return;}
             var runMode=(RunMode)mode.SelectedIndex;
+            bool reverse=direction.SelectedIndex==1;
             if(runMode==RunMode.Execute && MessageBox.Show(this,room.Title+"의 운영진/본인을 제외한 모든 참여자에게 내보내기를 시도합니다.\n확인창 안내처럼 재참여가 제한됩니다. 계속할까요?","대상 방 확인",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;
-            stopping=false;halt.Reset();rooms.Enabled=false;mode.Enabled=false;start.Enabled=false;
+            stopping=false;halt.Reset();rooms.Enabled=false;mode.Enabled=false;direction.Enabled=false;start.Enabled=false;
             var initial=new HashSet<IntPtr>(Desktop.Windows().Select(w=>w.Handle));
-            worker=new Thread(()=>Run(room,runMode,initial)){IsBackground=true,Name="참여자 정리 STA"};worker.SetApartmentState(ApartmentState.STA);worker.Start();
+            worker=new Thread(()=>Run(room,runMode,initial,reverse)){IsBackground=true,Name="참여자 정리 STA"};worker.SetApartmentState(ApartmentState.STA);worker.Start();
         }
         void Stop(){stopping=true;halt.Set();}
-        void Run(Window room,RunMode runMode,HashSet<IntPtr> initial)
+        void Run(Window room,RunMode runMode,HashSet<IntPtr> initial,bool reverse)
         {
             try
             {
                 bool test=runMode==RunMode.Observe;
-                var vision=new Vision(Program.Assets);var flow=new Workflow(runMode);var permitted=new HashSet<IntPtr>{room.Handle};
+                var vision=new Vision(Program.Assets);var flow=new Workflow(runMode,reverse);var permitted=new HashSet<IntPtr>{room.Handle};
+                Report(reverse?"역순 시작: 맨 아래부터 위로 처리":"정순 시작: 맨 위부터 아래로 처리");
                 // 시작 버튼을 누른 사용자가 지정한 방만 활성화합니다.
                 Desktop.SetForegroundWindow(room.Handle);
                 while(!stopping)
@@ -288,7 +311,7 @@ namespace OpenChatRoomCleaner
                 Report("중지됨");
             }
             catch(Exception ex){Report("시작 실패: "+ex.Message);}
-            finally {if(!IsDisposed)BeginInvoke((Action)(()=>{rooms.Enabled=true;mode.Enabled=true;start.Enabled=true;}));}
+            finally {if(!IsDisposed)BeginInvoke((Action)(()=>{rooms.Enabled=true;mode.Enabled=true;direction.Enabled=true;start.Enabled=true;}));}
         }
         // 시험 모드는 현재 카카오톡 창을 읽기만 합니다. 실제 입력은 선택 방의 소유 창과
         // 예상 단계에서 새로 나타난 전경 팝업으로 한정합니다. 제목 유무로 프로필을 배제하지 않습니다.
@@ -304,7 +327,7 @@ namespace OpenChatRoomCleaner
             if(s==Stage.Profile)return !o.ProfileMenu.IsEmpty;
             if(s==Stage.RemoveMenu)return !o.Remove.IsEmpty;
             if(s==Stage.Confirm)return !o.Confirm.IsEmpty;
-            if(s==Stage.SeekTop)return o.ListViewportValid||o.ListValid;
+            if(s==Stage.SeekEdge)return o.ListViewportValid||o.ListValid;
             if(s==Stage.Scan)return o.ListValid;
             return o.ListViewportValid||o.ListValid||!o.Members.IsEmpty||!o.ProfileMenu.IsEmpty||!o.Remove.IsEmpty;
         }
@@ -324,14 +347,14 @@ namespace OpenChatRoomCleaner
                     using(var pen=new Pen(Color.Red,3)){g.DrawEllipse(pen,selected.X-10,selected.Y-10,20,20);g.DrawLine(pen,selected.X-14,selected.Y,selected.X+14,selected.Y);}
                     marked.Save(Path.Combine(directory,"last-selection.png"),System.Drawing.Imaging.ImageFormat.Png);
                 }
-                File.WriteAllText(Path.Combine(directory,"last-selection.txt"),"목록창-v6 "+DateTime.Now.ToString("O")+Environment.NewLine+
+                File.WriteAllText(Path.Combine(directory,"last-selection.txt"),"목록창-v7 "+DateTime.Now.ToString("O")+Environment.NewLine+
                     "선택="+selected+Environment.NewLine+string.Join(Environment.NewLine,observation.Rows.Select(row=>row.Click+" 제외="+row.Protected+" 불확실="+row.Uncertain)));
             }
             catch(Exception error){if(!(error is IOException || error is UnauthorizedAccessException || error is System.Runtime.InteropServices.ExternalException))throw;Report("선택 진단 저장 실패: "+error.Message);}
         }
         void Report(string text)
         {
-            text="[목록창-v6] "+text;
+            text="[목록창-v7] "+text;
             if(IsDisposed||!IsHandleCreated)return;
             BeginInvoke((Action)(()=>{
                 if(text==lastStatus && (DateTime.Now-lastDisplay).TotalSeconds<5)return;

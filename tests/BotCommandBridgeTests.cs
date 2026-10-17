@@ -231,6 +231,27 @@ internal static class BotCommandBridgeTests
             if (!Database.Instance.GetQuizCategoryHelp().Contains("/과학퀴즈 — 2문제")) throw new Exception("분류 목록 오류");
             if (!Database.Instance.TrySetNextCommonSense(null)) throw new Exception("전체 출제 오류");
             Database.Instance.ResetCommonSense();
+            Set(bot, "automaticQuizTimer", new CustomTimer(300000));
+            var advanceAuto = typeof(Bot).GetMethod("AdvanceAutomaticQuiz", flags);
+            var allowQuiz = typeof(Bot).GetMethod("AllowsQuizRequest", flags);
+            Func<long, bool> advance = ms => (bool)advanceAuto.Invoke(bot, new object[] { ms });
+            bot.AutomaticQuiz = false;
+            if (advance(600000)) throw new Exception("수동 모드 자동 출제 발생");
+            bot.AutomaticQuiz = true;
+            if (advance(299999) || !advance(1) || advance(0)) throw new Exception("자동 모드 5분 경계 오류");
+            foreach (string request in new[] { "/퀴즈", "/상식퀴즈", "/과학퀴즈" })
+                if ((bool)allowQuiz.Invoke(bot, new object[] { request })) throw new Exception("자동 모드 출제 명령 허용");
+            if (!(bool)allowQuiz.Invoke(bot, new object[] { "/퀴즈목록" })) throw new Exception("분류 목록 조회 차단");
+            Database.Instance.CurrentAnswerIndex = 0;
+            if (advance(300000)) throw new Exception("진행 중 문제 자동 덮어쓰기");
+            Database.Instance.ResetCommonSense();
+            if (advance(0) || !advance(300000)) throw new Exception("진행 중 건너뛴 주기 누적 출제");
+            advance(200000); bot.AutomaticQuiz = false; bot.AutomaticQuiz = true;
+            if (advance(100000) || !advance(200000)) throw new Exception("모드 변경 시 5분 대기 초기화 오류");
+            if (!advance(900000) || advance(0)) throw new Exception("지연된 자동 출제 몰아서 실행");
+            bot.AutomaticQuiz = false;
+            if (!(bool)allowQuiz.Invoke(bot, new object[] { "/퀴즈" })) throw new Exception("수동 모드 명령 복구 실패");
+            Console.WriteLine("PASS: quiz mode, five-minute boundary, command restriction, active question, mode reset and delayed tick");
             Quiz registered;
             string registrationError;
             if (!Quiz.TryParseRegistration("/퀴즈등록 과학 | 하 | 물의 화학식은? | H2O | 알파벳과 숫자 | 수소 두 개와 산소 한 개", out registered, out registrationError))

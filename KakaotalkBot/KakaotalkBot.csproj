@@ -140,9 +140,13 @@
     <Compile Include="OperationsStore.cs" />
     <Compile Include="RoomTitles.cs" />
     <Compile Include="DailyQuests.cs" />
-    <Compile Include="OperationsPanel.cs" />
+    <Compile Include="OperationsPanel.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="OperatorNotifications.cs" />
-    <Compile Include="OperatorNotificationsPanel.cs" />
+    <Compile Include="OperatorNotificationsPanel.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="VoiceRoomBot.cs" />
     <Compile Include="WindowInfo.cs" />
     <Compile Include="WindowsMacro.cs" />

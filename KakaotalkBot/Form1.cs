@@ -67,6 +67,7 @@ namespace KakaotalkBot
             instance = this;
             InitializeComponent();
             InitializeDatabaseControls();
+            InitializeQuizModeControls();
             InitializeOperationsControls();
 
             timer = new System.Windows.Forms.Timer();
@@ -175,6 +176,47 @@ namespace KakaotalkBot
             catalogCancellation.Cancel();
             bot.Stop();
             Program.ShutdownFlag = true;
+        }
+
+        private void InitializeQuizModeControls()
+        {
+            var group = new GroupBox { Text = "퀴즈 출제 모드" };
+            group.SetBounds(428, 197, 385, 49);
+            var manual = new RadioButton { Text = "명령어 출제", AutoSize = true };
+            var automatic = new RadioButton { Text = "5분마다 자동 (명령 호출 불가)", AutoSize = true };
+            manual.Location = new System.Drawing.Point(8, 21);
+            automatic.Location = new System.Drawing.Point(125, 21);
+            bot.AutomaticQuiz = Settings.Instance.AutomaticQuiz;
+            manual.Checked = !bot.AutomaticQuiz;
+            automatic.Checked = bot.AutomaticQuiz;
+            group.Controls.AddRange(new Control[] { manual, automatic });
+            tabPage2.Controls.Add(group);
+            bool changing = false;
+            EventHandler changed = (sender, args) =>
+            {
+                var selected = (RadioButton)sender;
+                if (changing || !selected.Checked) return;
+                changing = true;
+                bool next = selected == automatic;
+                try
+                {
+                    Settings.Instance.AutomaticQuiz = next;
+                    Settings.Save(Settings.Instance);
+                    bot.AutomaticQuiz = next;
+                }
+                catch (Exception error)
+                {
+                    Settings.Instance.AutomaticQuiz = bot.AutomaticQuiz;
+                    MessageBox.Show(this, "퀴즈 모드 저장 실패: " + error.Message);
+                }
+                manual.Checked = !bot.AutomaticQuiz;
+                automatic.Checked = bot.AutomaticQuiz;
+                changing = false;
+            };
+            manual.CheckedChanged += changed;
+            automatic.CheckedChanged += changed;
+            var tips = new ToolTip(components);
+            tips.SetToolTip(automatic, "봇 수신 시작 또는 자동 모드 전환 후 5분부터 출제합니다. 진행 중인 문제는 기존 제한시간까지 유지합니다.");
         }
 
         private void InitializeDatabaseControls()

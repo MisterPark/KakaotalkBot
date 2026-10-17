@@ -151,7 +151,7 @@ namespace OpenChatRoomCleaner
             if(!stage.HasValue || stage==Stage.RemoveMenu || stage==Stage.ReturnToList) Find(p,"remove",full,out o.Remove);
             // 일반 확인 버튼만 찾지 않고, 내보내기 제목과 경고 문구까지 함께 확인합니다.
             if((!stage.HasValue || stage==Stage.Confirm) && Find(p,"confirm-title",full,out ignored) && Find(p,"confirm-body",full,out ignored)) Find(p,"confirm-ok",full,out o.Confirm);
-            if(!readParticipantList || (stage.HasValue && stage!=Stage.OpenList && stage!=Stage.ReturnToList && stage!=Stage.SeekTop && stage!=Stage.Scan))return o;
+            if(!readParticipantList || (stage.HasValue && stage!=Stage.OpenList && stage!=Stage.ReturnToList && stage!=Stage.SeekEdge && stage!=Stage.Scan))return o;
             if(!Find(p,"list-footer",full,out o.Footer)){o.ListFailure="목록 하단 기준 이미지 없음";return o;}
             int rawLeft=o.Footer.X-80, left=rawLeft, bottom=o.Footer.Y-12;
             // 캡처 테두리와 가운데 정렬 반올림으로 1~몇 픽셀 차이가 생길 수 있습니다.

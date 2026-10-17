@@ -25,6 +25,7 @@ namespace KakaotalkBot
         }
         public string SpreadsheetId { get; set; }
         public string ApplicationName { get; set; }
+        public bool AutomaticQuiz { get; set; }
         public string ChatAccountPath { get; set; }
         public long ChatRoomId { get; set; }
         public long ChatOwnAuthorId { get; set; }
