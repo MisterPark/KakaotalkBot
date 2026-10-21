@@ -393,7 +393,7 @@ namespace KakaotalkBot
                     permissionError = "운영진 명령은 오픈채팅 그룹방에서만 사용할 수 있습니다.";
                 else if (command.ReceivedAt <= 0 || now < command.ReceivedAt || now - command.ReceivedAt > 15)
                     permissionError = "명령 처리 대기 시간이 길어 취소했습니다. 다시 입력해 주세요.";
-                else if (Database.Instance.Operators.Check(command.ChatId, command.AuthorId, now, out permissionError))
+                else if (Database.Instance.Operators.CheckManagement(command.ChatId, command.AuthorId, BotIdentity.SuperUserId, now, out permissionError))
                     permissionError = null;
                 if (permissionError != null)
                 {

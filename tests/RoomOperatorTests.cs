@@ -23,7 +23,13 @@ class RoomOperatorTests
             string error;
             var store = new RoomOperatorStore();
             Check(!store.Check(10, id, 100, out error), "수신 전 권한 없음");
+            Check(store.CheckManagement(10, id, id, 100, out error) && error == null, "고정 계정은 운영진 목록 없이 관리 허용");
+            Check(!store.CheckManagement(10, 20, id, 100, out error), "다른 ID의 관리 권한 거부");
+            Check(!store.CheckManagement(10, 0, 0, 100, out error), "미설정 계정 권한 거부");
             store.Observe(Roster(100, 1));
+            Check(store.CheckManagement(10, 20, 20, 100, out error), "일반 참여자인 고정 계정도 관리 허용");
+            Check(!store.CheckManagement(10, 20, id, 100, out error), "동일 닉네임 일반 참여자 관리 거부");
+            Check(store.CheckManagement(10, id, 0, 100, out error), "기존 부방장 관리 권한 유지");
             Check(!store.CheckQuizIssuer(10, id, 0, 100, 100, out error), "부방장 퀴즈 등록 거부");
             Check(!store.CheckQuizIssuer(10, 20, id, 100, 100, out error), "동일 닉네임 슈퍼계정 사칭 거부");
             Check(store.CheckQuizIssuer(10, 20, 20, 100, 100, out error), "고정 ID 슈퍼계정 허용");

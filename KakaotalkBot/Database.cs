@@ -137,6 +137,8 @@ namespace KakaotalkBot
         internal DailyQuestStore Quests = new DailyQuestStore();
         public bool HasPendingActivity { get { return activity.Dirty || Operators.Dirty || Operations.Dirty || Titles.Dirty || Quests.Dirty; } }
         internal void ConfirmActivitySaved() { activity.MarkSaved(); Operators.Dirty = false; Operations.Dirty = false; Operations.ResetPending = false; Titles.Dirty = false; Quests.Dirty = false; }
+        internal bool CanManageRoom(long chatId, long userId)
+        { string error; return Operators.CheckManagement(chatId, userId, BotIdentity.SuperUserId, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), out error); }
         public bool IsRoomOperator(long chatId, long userId)
         { string error; return Operators.Check(chatId, userId, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), out error); }
         public IReadOnlyList<RoomEventRecord> RoomEvents { get { return activity.Events.AsReadOnly(); } }
@@ -432,7 +434,7 @@ namespace KakaotalkBot
 
         public void AddOperatorMemo(long chat, long author, long target, string text, long log = 0)
         {
-            if (!UserStorageReady || !IsRoomOperator(chat, author)) throw new InvalidOperationException("현재 방의 운영진 권한을 확인할 수 없습니다. 수신 상태와 작성자 ID를 확인하세요.");
+            if (!UserStorageReady || !CanManageRoom(chat, author)) throw new InvalidOperationException("현재 방의 운영진 권한을 확인할 수 없습니다. 수신 상태와 작성자 ID를 확인하세요.");
             SaveMemo(chat, author, target, text, log, "chat_operator");
         }
         // 로컬 운영 화면은 이 PC의 관리자가 사용합니다. 특정 카카오 사용자로 가장하지 않습니다.
@@ -505,7 +507,7 @@ namespace KakaotalkBot
         }
         internal string ChangeNamedTitle(long chat, long author, long userId, long log, string title, int days, bool revoke)
         {
-            if (!UserStorageReady || !IsRoomOperator(chat, author)) throw new InvalidOperationException("현재 방 운영진만 네임드를 변경할 수 있습니다.");
+            if (!UserStorageReady || !CanManageRoom(chat, author)) throw new InvalidOperationException("현재 방 운영진만 네임드를 변경할 수 있습니다.");
             title = (title ?? "").Trim();
             if (title.Length == 0 || title.Length > 30 || title.Any(char.IsControl)) throw new ArgumentException("칭호는 줄바꿈 없이 1~30자로 입력하세요.");
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

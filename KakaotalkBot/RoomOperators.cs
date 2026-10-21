@@ -101,6 +101,14 @@ namespace KakaotalkBot
             return true;
         }
 
+        // 방별 역할 기록은 그대로 두고 관리 명령의 실행 권한만 고정 계정 ID로 확장합니다.
+        internal bool CheckManagement(long chat, long user, long superUser, long now, out string error)
+        {
+            if (chat > 0 && user > 0 && superUser > 0 && user == superUser)
+            { error = null; return true; }
+            return Check(chat, user, now, out error);
+        }
+
         internal bool Check(long chat, long user, long now, out string error)
         {
             ChatMemberState member;
