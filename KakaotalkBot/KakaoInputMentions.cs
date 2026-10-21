@@ -31,11 +31,9 @@ namespace KakaotalkBot
         internal long ProcessStart;
     }
 
-    /// <summary>현재 입력 중인 멘션을 조회한다. 검증된 카카오톡·RichEdit 버전에서만 작동한다.</summary>
+    /// <summary>현재 입력 중인 멘션을 조회한다. 버전 문자열 대신 실제 객체 구조를 검사한다.</summary>
     public static class KakaoInputMentions
     {
-        private const string KakaoVersion = "26.8.1.5315";
-        private const string RichEditVersion = "10.0.19041.4522";
         private const ulong MentionVtableRva = 0x292FB50;
         private static readonly Guid MentionClass = new Guid("459e8c62-070f-42b0-b92b-64dd59af0ebe");
         private static readonly object Gate = new object();
@@ -340,10 +338,9 @@ namespace KakaotalkBot
                 using (var process = Process.GetProcessById(context.Pid))
                 {
                     context.Start = process.StartTime.ToUniversalTime().Ticks;
-                    if (process.MainModule.FileVersionInfo.ProductVersion != KakaoVersion) throw new NotSupportedException("검증되지 않은 카카오톡 버전입니다.");
+                    // 업데이트된 버전도 시도하되 아래의 함수 패턴·클래스 GUID 검사는 유지합니다.
                     context.Vtable = (ulong)process.MainModule.BaseAddress.ToInt64() + MentionVtableRva;
                     var richEdit = process.Modules.Cast<ProcessModule>().Single(module => module.ModuleName.Equals("msftedit.dll", StringComparison.OrdinalIgnoreCase));
-                    if (richEdit.FileVersionInfo.FileVersion.Split(' ')[0] != RichEditVersion) throw new NotSupportedException("검증되지 않은 RichEdit 버전입니다.");
                     context.RichEditBase = (ulong)richEdit.BaseAddress.ToInt64(); context.RichEditSize = (ulong)richEdit.ModuleMemorySize;
                 }
                 context.Handle = OpenProcess(writable ? 0x438u : 0x410u, false, context.Pid);
