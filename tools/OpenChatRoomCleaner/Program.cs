@@ -57,6 +57,7 @@ namespace OpenChatRoomCleaner
                         if((x-cx)*(x-cx)+(y-cy)*(y-cy)>rad*rad)changed.SetPixel(x,y,Color.DarkGray);
                     Rectangle matched;Assert(new Pixels(changed).FindRoundBadge(new Pixels(originalBadge),new Rectangle(Point.Empty,changed.Size),out matched),"프로필 사진/마우스 배경이 바뀌어도 운영진 배지 인식");
                 }
+                long testClock=0;
                 var vision=new Vision(Assets);
                 using(var first=new Bitmap(args[1])) using(var list=first.Clone(new Rectangle(320,82,270,319),first.PixelFormat))
                 {
@@ -98,20 +99,20 @@ namespace OpenChatRoomCleaner
                             using(var g=Graphics.FromImage(unreadable))g.FillRectangle(Brushes.White,70,65,175,35);
                             var middle=vision.Read(unreadable);
                             Assert(!middle.ListValid && middle.ListViewportValid,"행 판독 실패와 스크롤 가능한 영역을 분리");
-                            var recover=new Workflow();
+                            var recover=new Workflow(clock:()=>testClock);
                             var move=recover.Decide(middle);
                             Assert(move.Kind==ActionKind.ScrollUp && recover.Stage==Stage.SeekEdge,"기존 스크롤 유지 시 인식 대기 대신 위로 이동");
-                            for(int retry=0;retry<5;retry++){recover.Applied(move);move=recover.Decide(middle);Assert(move.Kind==ActionKind.ScrollUp,"행이 안 읽힌 채 정지해도 유저 클릭/완료 금지");}
-                            recover.Applied(move);move=recover.Decide(observed);
-                            for(int retry=0;retry<3 && move.Kind==ActionKind.ScrollUp;retry++){recover.Applied(move);move=recover.Decide(observed);}
+                            for(int retry=0;retry<5;retry++){recover.Applied(move);testClock+=250;move=recover.Decide(middle);Assert(move.Kind==ActionKind.ScrollUp || move.Kind==ActionKind.Wait,"행이 안 읽힌 채 정지해도 유저 클릭/완료 금지");}
+                            recover.Applied(move);testClock+=250;move=recover.Decide(observed);
+                            for(int retry=0;retry<4 && move.Kind!=ActionKind.Click;retry++){recover.Applied(move);testClock+=250;move=recover.Decide(observed);}
                             Assert(move.Kind==ActionKind.Click && move.Point==observed.Rows[1].Click,"최상단 안정화 후 첫 일반 참여자 선택");
-                            var reopened=new Workflow{Stage=Stage.ReturnToList};Assert(reopened.Decide(middle).Kind==ActionKind.ScrollUp,"내보내기 시도 후 재개방한 목록도 먼저 맨 위로 이동");
+                            var reopened=new Workflow(clock:()=>testClock){Stage=Stage.ReturnToList};Assert(reopened.Decide(middle).Kind==ActionKind.ScrollUp,"내보내기 시도 후 재개방한 목록도 먼저 맨 위로 이동");
                         }
                         Assert(observed.Rows.Count==5,"큰 목록의 완전한 5개 행만 읽기");
                         Assert(observed.Rows[0].Protected,"방장 행 제외");
                         Assert(observed.Rows[1].Click.Y>=125 && observed.Rows[1].Click.Y<=137,"첫 일반 유저 이미지 중앙 위치");
                         Assert(observed.Rows.Count(row=>!row.Protected)==4,"잘린 여섯 번째 행 제외");
-                        var largeFlow=new Workflow{Stage=Stage.Scan};
+                        var largeFlow=new Workflow(clock:()=>testClock){Stage=Stage.Scan};
                         var next=largeFlow.Decide(observed);Assert(next.Kind==ActionKind.Click && next.Point==observed.Rows[1].Click,"큰 목록에서 운영진 다음 일반 참여자 선택");
                     }
                 }
@@ -138,7 +139,7 @@ namespace OpenChatRoomCleaner
                         var rows=vision.Read(liveScroll);
                         Assert(rows.ListValid && rows.Rows.Count>=3,"실제 스크롤 캡처의 완전한 행 인식: "+rows.ListFailure);
                         Assert(rows.Rows.All(row=>row.Protected),"실제 스크롤 화면 운영진 제외 및 하단 잘린 일반 행 제외: "+string.Join(";",rows.Rows.Select(row=>row.Click+" 제외="+row.Protected)));
-                        var scan=new Workflow{Stage=Stage.Scan};Assert(scan.Decide(rows).Kind!=ActionKind.Click,"운영진과 잘린 행을 선택하지 않음");
+                        var scan=new Workflow(clock:()=>testClock){Stage=Stage.Scan};Assert(scan.Decide(rows).Kind!=ActionKind.Click,"운영진과 잘린 행을 선택하지 않음");
                     }
                 }
                 if(args.Length>=10)
@@ -153,25 +154,25 @@ namespace OpenChatRoomCleaner
                         var focused=vision.Read(ordinaryBlue,true,Stage.Scan);
                         Assert(focused.ListValid && focused.Rows.Count==rows.Rows.Count && !focused.Rows[2].Protected,"단계별 검색에서도 동일한 목록 판정");
                         rows.Rows.RemoveAt(1);
-                        var pick=new Workflow{Stage=Stage.Scan}.Decide(rows);
+                        var pick=new Workflow(clock:()=>testClock){Stage=Stage.Scan}.Decide(rows);
                         Assert(pick.Kind==ActionKind.Click && pick.Point==rows.Rows[1].Click,"앞 유저 제거 후 어피치를 건너뛰지 않고 선택");
                     }
                 }
                 using(var blank=new Bitmap(400,700)) {var o=vision.Read(blank);Assert(!o.ListValid&&o.Confirm.IsEmpty,"빈 화면에서 클릭/완료 금지");}
-                var flow=new Workflow();var empty=new Observation();for(int i=0;i<20;i++)Assert(flow.Decide(empty).Kind==ActionKind.Wait,"예상 이미지 없으면 계속 대기");
+                var flow=new Workflow(clock:()=>testClock);var empty=new Observation();for(int i=0;i<20;i++)Assert(flow.Decide(empty).Kind==ActionKind.Wait,"예상 이미지 없으면 계속 대기");
                 flow.Stage=Stage.Scan;
                 var uncertainList=new Observation{ListValid=true,ListHash=5};uncertainList.Rows.Add(new Row{Protected=true,Uncertain=true});
                 Assert(flow.Decide(uncertainList).Kind==ActionKind.Wait,"의심 배지를 일반 유저로 선택하거나 완료하지 않음");
                 var protectedList=new Observation{ListValid=true,ListHash=99};protectedList.Rows.Add(new Row{Protected=true});
                 var d=flow.Decide(protectedList);Assert(d.Kind==ActionKind.ScrollDown,"운영진만 보여도 즉시 완료하지 않음");
-                for(int i=0;i<3;i++){flow.Applied(d);d=flow.Decide(protectedList);}
+                for(int i=0;i<3;i++){flow.Applied(d);testClock+=250;d=flow.Decide(protectedList);}
                 Assert(d.Kind==ActionKind.Complete,"목록 끝 재확인 후 완료");
-                flow=new Workflow{Stage=Stage.Scan};var ordinary=new Observation{ListValid=true,ListHash=12};ordinary.Rows.Add(new Row{Protected=false});
+                flow=new Workflow(clock:()=>testClock){Stage=Stage.Scan};var ordinary=new Observation{ListValid=true,ListHash=12};ordinary.Rows.Add(new Row{Protected=false});
                 d=flow.Decide(ordinary);Assert(d.Kind==ActionKind.Click,"일반 참여자 선택");flow.Applied(d);Assert(flow.Stage==Stage.Profile,"입력 접수 후에만 다음 단계");
                 Assert(flow.Decide(empty).Kind==ActionKind.Wait && flow.Stage==Stage.Profile,"프로필 로딩 중 단계 유지");
-                flow=new Workflow(RunMode.Execute);flow.Stage=Stage.Confirm;d=flow.Decide(new Observation{Confirm=new Rectangle(1,1,20,20)});flow.Applied(d);
+                flow=new Workflow(RunMode.Execute,clock:()=>testClock);flow.Stage=Stage.Confirm;d=flow.Decide(new Observation{Confirm=new Rectangle(1,1,20,20)});flow.Applied(d);
                 Assert(flow.Attempts==1&&flow.Stage==Stage.ReturnToList,"성공 횟수가 아닌 확인 클릭 시도 횟수 집계");
-                var preview=new Workflow{Stage=Stage.Confirm};
+                var preview=new Workflow(clock:()=>testClock){Stage=Stage.Confirm};
                 d=preview.Decide(new Observation{Confirm=new Rectangle(1,1,20,20)});
                 Assert(d.Kind==ActionKind.PreviewComplete,"자동 시험에서 최종 확인 클릭 금지");preview.Applied(d);Assert(preview.Attempts==0,"자동 시험에서 실제 강퇴 시도 0회");
                 Assert(!Desktop.Apply(null,new Decision(ActionKind.ConfirmRemoval,"차단 시험"),()=>false),"입력 계층도 기본값으로 최종 확인 차단");
@@ -180,20 +181,36 @@ namespace OpenChatRoomCleaner
                 reverseRows.Rows.Add(new Row{Click=new Point(38,132),Protected=true});
                 reverseRows.Rows.Add(new Row{Click=new Point(38,184)});
                 reverseRows.Rows.Add(new Row{Click=new Point(38,236),Protected=true});
-                var reverseFlow=new Workflow(RunMode.Preview,true);
+                var reverseFlow=new Workflow(RunMode.Preview,true,()=>testClock);
                 var reverseDecision=reverseFlow.Decide(reverseRows);
                 Assert(reverseDecision.Kind==ActionKind.ScrollDown,"역순은 목록 맨 아래부터 탐색");
-                for(int i=0;i<3;i++){reverseFlow.Applied(reverseDecision);reverseDecision=reverseFlow.Decide(reverseRows);}
+                for(int i=0;i<3;i++){reverseFlow.Applied(reverseDecision);testClock+=250;reverseDecision=reverseFlow.Decide(reverseRows);}
                 Assert(reverseDecision.Kind==ActionKind.Click && reverseDecision.Point==reverseRows.Rows[2].Click,"역순에서 마지막 일반 참여자 선택 및 운영진 제외");
                 reverseFlow.Stage=Stage.ReturnToList;
                 Assert(reverseFlow.Decide(reverseRows).Kind==ActionKind.ScrollDown,"역순 제거 후 하단 목록 다시 인식");
-                reverseFlow=new Workflow(RunMode.Preview,true){Stage=Stage.Scan};
+                reverseFlow=new Workflow(RunMode.Preview,true,()=>testClock){Stage=Stage.Scan};
                 reverseDecision=reverseFlow.Decide(protectedList);
                 Assert(reverseDecision.Kind==ActionKind.ScrollUp,"역순 운영진만 보일 때 위로 탐색");
-                for(int i=0;i<3;i++){reverseFlow.Applied(reverseDecision);reverseDecision=reverseFlow.Decide(protectedList);}
+                for(int i=0;i<3;i++){reverseFlow.Applied(reverseDecision);testClock+=250;reverseDecision=reverseFlow.Decide(protectedList);}
                 Assert(reverseDecision.Kind==ActionKind.Complete,"역순 상단 경계 재확인 후 완료");
-                reverseFlow=new Workflow(RunMode.Preview,true){Stage=Stage.Confirm};
+                reverseFlow=new Workflow(RunMode.Preview,true,()=>testClock){Stage=Stage.Confirm};
                 Assert(reverseFlow.Decide(new Observation{Confirm=new Rectangle(1,1,20,20)}).Kind==ActionKind.PreviewComplete,"역순 시험에서도 최종 확인 금지");
+                long fastClock=0;
+                var fastFlow=new Workflow(clock:()=>fastClock){Stage=Stage.Scan};
+                var edge=fastFlow.Decide(protectedList);fastFlow.Applied(edge);
+                for(int i=0;i<100;i++)Assert(fastFlow.Decide(protectedList).Kind==ActionKind.Wait,"같은 시각에 반복 관찰해도 완료 금지");
+                fastClock=599;Assert(fastFlow.Decide(protectedList).Kind==ActionKind.Wait,"600ms 전에 경계 확정 금지");
+                fastClock=600;Assert(fastFlow.Decide(protectedList).Kind==ActionKind.Complete,"600ms 안정화 후 경계 확정");
+                fastClock=0;fastFlow=new Workflow(clock:()=>fastClock){Stage=Stage.Scan};
+                edge=fastFlow.Decide(protectedList);fastFlow.Applied(edge);
+                fastClock=500;protectedList.ListHash++;
+                edge=fastFlow.Decide(protectedList);Assert(edge.Kind==ActionKind.ScrollDown,"목록 변경 시 안정 시간 초기화");fastFlow.Applied(edge);
+                fastClock=600;Assert(fastFlow.Decide(protectedList).Kind==ActionKind.Wait,"변경 이전 안정 시간 합산 금지");
+                fastClock=1100;Assert(fastFlow.Decide(protectedList).Kind==ActionKind.Complete,"변경 이후 안정화 완료");
+                fastClock=0;fastFlow=new Workflow(clock:()=>fastClock){Stage=Stage.Scan};
+                edge=fastFlow.Decide(protectedList);fastFlow.Applied(edge);
+                fastClock=500;fastFlow.InterruptObservation();
+                fastClock=650;Assert(fastFlow.Decide(protectedList).Kind==ActionKind.Wait,"다른 앱/인식 실패 시간을 경계 안정 시간으로 합산 금지");
                 File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"test-result.txt"),"PASS: 실제 캡처 "+(args.Length-1)+"장과 좌표/상태 전이 시험 통과. 실제 입력 없음.");return 0;
             }
             catch(Exception e){File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"test-result.txt"),e.ToString());return 1;}
@@ -213,7 +230,7 @@ namespace OpenChatRoomCleaner
         Thread worker;volatile bool stopping; string lastStatus;DateTime lastDisplay;
         internal MainForm()
         {
-            Text="오픈채팅 참여자 정리 · 목록창-v7 / 확인 직전 시험";Width=760;Height=440;Font=new Font("맑은 고딕",10);
+            Text="오픈채팅 참여자 정리 · 목록창-v8 / 확인 직전 시험";Width=760;Height=440;Font=new Font("맑은 고딕",10);
             mode.Items.AddRange(new object[]{"인식만 확인 (클릭 없음)","자동 시험 (최종 확인 직전 중지)","실제 내보내기"});mode.SelectedIndex=1;
             direction.Items.AddRange(new object[]{"정순: 맨 위 → 아래", "역순: 맨 아래 → 위"});direction.SelectedIndex=0;
             var bar=new FlowLayoutPanel{Dock=DockStyle.Top,Height=115};var refresh=new Button{Text="방 새로고침",AutoSize=true};
@@ -251,19 +268,23 @@ namespace OpenChatRoomCleaner
                 Report(reverse?"역순 시작: 맨 아래부터 위로 처리":"정순 시작: 맨 위부터 아래로 처리");
                 // 시작 버튼을 누른 사용자가 지정한 방만 활성화합니다.
                 Desktop.SetForegroundWindow(room.Handle);
+                int retryDelay=0;
+                IntPtr lastClickWindow=IntPtr.Zero;ulong lastClickImage=0;Stage lastClickStage=Stage.Complete;
                 while(!stopping)
                 {
-                    if(halt.WaitOne(100))break;
+                    if(halt.WaitOne(retryDelay))break;
+                    // 입력 성공 뒤에는 즉시 읽고, 변화가 없을 때만 15ms 뒤 재검사합니다.
+                    retryDelay=15;
                     try
                     {
                         var windows=Desktop.Windows(includeChildren:true);
                         if(!windows.Any(w=>w.Handle==room.Handle&&w.Process==room.Process&&w.Title==room.Title)){Report("선택한 방이 닫혔습니다. 중지합니다.");break;}
-                        if(!Desktop.IsForegroundProcess(room.Process)){Report("카카오톡 화면으로 돌아오면 이어서 진행합니다.");continue;}
+                        if(!Desktop.IsForegroundProcess(room.Process)){flow.InterruptObservation();Report("카카오톡 화면으로 돌아오면 이어서 진행합니다.");continue;}
                         IntPtr foreground=Desktop.GetForegroundWindow();
                         foreach(var w in windows.Where(w=>w.Process==room.Process))
                             if(EligibleWindow(false,Desktop.OwnedBy(w.Handle,room.Handle),permitted.Contains(w.Handle),
                                 initial.Contains(w.Handle),w.Handle==foreground,flow.Stage,w.Title))permitted.Add(w.Handle);
-                        bool acted=false;string waiting="예상 화면을 찾는 중: "+flow.Stage;
+                        bool acted=false,listObserved=false;string waiting="예상 화면을 찾는 중: "+flow.Stage;
                         var findings=new List<string>();bool invalidListSeen=false;int inspected=0;bool foregroundInspected=false;
                         foreach(var w in windows.Where(w=>w.Process==room.Process && Desktop.IsCaptureWindow(w) &&
                             (permitted.Contains(w.Handle)||(test&&w.Handle==foreground)))
@@ -271,7 +292,14 @@ namespace OpenChatRoomCleaner
                         {
                             using(var frame=Desktop.Capture(w.Handle))
                             {
-                                if(frame==null)continue;inspected++;if(w.Handle==foreground)foregroundInspected=true;var observation=vision.Read(frame.Image,Desktop.IsParticipantPopup(w,room,windows),test?(Stage?)null:flow.Stage);
+                                if(frame==null)continue;
+                                ulong frameHash=0;
+                                if(!test && lastClickWindow==w.Handle && lastClickStage==flow.Stage)
+                                {
+                                    frameHash=new Pixels(frame.Image).Fingerprint(new Rectangle(Point.Empty,frame.Image.Size));
+                                    if(frameHash==lastClickImage){waiting="입력 후 화면 변화 대기";continue;}
+                                }
+                                inspected++;if(w.Handle==foreground)foregroundInspected=true;var observation=vision.Read(frame.Image,Desktop.IsParticipantPopup(w,room,windows),test?(Stage?)null:flow.Stage);
                                 observation.NativeProfile=Desktop.IsProfileWindow(w,room,windows);
                                 if(observation.NativeProfile && (test || flow.Stage==Stage.Profile || flow.Stage==Stage.ReturnToList) && observation.Remove.IsEmpty && observation.Confirm.IsEmpty)
                                     observation.ProfileMenu=vision.FindProfileAction(frame.Image);
@@ -280,6 +308,7 @@ namespace OpenChatRoomCleaner
                                     invalidListSeen=true;waiting="목록 재인식: "+observation.ListFailure+" ["+w.ClassName+"]";
                                     if(test)findings.Add(waiting);
                                 }
+                                if(observation.ListValid)listObserved=true;
                                 if(test)
                                 {
                                     string found=!observation.Confirm.IsEmpty?"내보내기 확인창":!observation.Remove.IsEmpty?"내보내기 메뉴":observation.NativeProfile?(observation.ProfileMenu.IsEmpty?"프로필 창(Win32) · 관리 아이콘 인식 대기":"프로필 창(Win32) · 관리 아이콘 위치 "+observation.ProfileMenu.X+","+observation.ProfileMenu.Y):!observation.ProfileMenu.IsEmpty?"프로필 관리 버튼(이미지)":observation.ListValid?"참여자 "+observation.Rows.Count+"명 / 제외 "+observation.Rows.Count(r=>r.Protected)+"명":!observation.Members.IsEmpty?"참여자 목록 열기 버튼":null;
@@ -296,17 +325,26 @@ namespace OpenChatRoomCleaner
                                 if(decision.Kind==ActionKind.Wait)continue;
                                 if(flow.Stage==Stage.Scan && decision.Kind==ActionKind.Click)
                                     SaveSelection(frame.Image,observation,decision.Point);
+                                // 상태가 유지되는 목록 열기/닫기는 화면 변화 전 같은 위치를 다시 누르지 않습니다.
+                                Stage beforeStage=flow.Stage;
+                                if(decision.Kind==ActionKind.Click || decision.Kind==ActionKind.Escape)
+                                    frameHash=new Pixels(frame.Image).Fingerprint(new Rectangle(Point.Empty,frame.Image.Size));
                                 if(Desktop.Apply(frame,decision,()=>stopping,runMode==RunMode.Execute))
-                                {flow.Applied(decision);Report(decision.Status+" · 시도 "+flow.Attempts+"회");acted=true;break;}
+                                {flow.Applied(decision);
+                                    if(flow.Stage==beforeStage && (decision.Kind==ActionKind.Click || decision.Kind==ActionKind.Escape))
+                                    {lastClickWindow=w.Handle;lastClickImage=frameHash;lastClickStage=flow.Stage;}
+                                    else lastClickWindow=IntPtr.Zero;
+                                    Report(decision.Status+" · 시도 "+flow.Attempts+"회");acted=true;retryDelay=0;break;}
                                 waiting="창 위치/가림 상태 변경 · 재인식 대기";
                             }
                         }
+                        if(!listObserved && (flow.Stage==Stage.SeekEdge || flow.Stage==Stage.Scan))flow.InterruptObservation();
                         if(test)Report("[시험 · 클릭 없음] 검사 "+inspected+"개 창 · "+
                             (findings.Count>0?string.Join(" / ",findings):"기준 이미지 일치 없음")+
                             (foregroundInspected?" · 현재 창 검사 완료":" · 현재 창 검사 대상 없음"));
                         else if(!acted)Report(waiting);
                     }
-                    catch(Exception ex){Report("재시도 대기: "+ex.Message);}
+                    catch(Exception ex){flow.InterruptObservation();Report("재시도 대기: "+ex.Message);}
                 }
                 Report("중지됨");
             }
@@ -347,14 +385,14 @@ namespace OpenChatRoomCleaner
                     using(var pen=new Pen(Color.Red,3)){g.DrawEllipse(pen,selected.X-10,selected.Y-10,20,20);g.DrawLine(pen,selected.X-14,selected.Y,selected.X+14,selected.Y);}
                     marked.Save(Path.Combine(directory,"last-selection.png"),System.Drawing.Imaging.ImageFormat.Png);
                 }
-                File.WriteAllText(Path.Combine(directory,"last-selection.txt"),"목록창-v7 "+DateTime.Now.ToString("O")+Environment.NewLine+
+                File.WriteAllText(Path.Combine(directory,"last-selection.txt"),"목록창-v8 "+DateTime.Now.ToString("O")+Environment.NewLine+
                     "선택="+selected+Environment.NewLine+string.Join(Environment.NewLine,observation.Rows.Select(row=>row.Click+" 제외="+row.Protected+" 불확실="+row.Uncertain)));
             }
             catch(Exception error){if(!(error is IOException || error is UnauthorizedAccessException || error is System.Runtime.InteropServices.ExternalException))throw;Report("선택 진단 저장 실패: "+error.Message);}
         }
         void Report(string text)
         {
-            text="[목록창-v7] "+text;
+            text="[목록창-v8] "+text;
             if(IsDisposed||!IsHandleCreated)return;
             BeginInvoke((Action)(()=>{
                 if(text==lastStatus && (DateTime.Now-lastDisplay).TotalSeconds<5)return;

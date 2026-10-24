@@ -34,7 +34,9 @@ namespace KakaotalkBot
     /// <summary>현재 입력 중인 멘션을 조회한다. 버전 문자열 대신 실제 객체 구조를 검사한다.</summary>
     public static class KakaoInputMentions
     {
-        private const ulong MentionVtableRva = 0x292FB50;
+        private static int resolvedPid;
+        private static long resolvedStart;
+        private static ulong resolvedBase, resolvedVtable;
         private static readonly Guid MentionClass = new Guid("459e8c62-070f-42b0-b92b-64dd59af0ebe");
         private static readonly object Gate = new object();
         private static InputMentionSnapshot cached;
@@ -339,7 +341,8 @@ namespace KakaotalkBot
                 {
                     context.Start = process.StartTime.ToUniversalTime().Ticks;
                     // 업데이트된 버전도 시도하되 아래의 함수 패턴·클래스 GUID 검사는 유지합니다.
-                    context.Vtable = (ulong)process.MainModule.BaseAddress.ToInt64() + MentionVtableRva;
+                    context.ModuleBase = (ulong)process.MainModule.BaseAddress.ToInt64();
+                    context.ModuleSize = process.MainModule.ModuleMemorySize;
                     var richEdit = process.Modules.Cast<ProcessModule>().Single(module => module.ModuleName.Equals("msftedit.dll", StringComparison.OrdinalIgnoreCase));
                     context.RichEditBase = (ulong)richEdit.BaseAddress.ToInt64(); context.RichEditSize = (ulong)richEdit.ModuleMemorySize;
                 }
@@ -347,6 +350,13 @@ namespace KakaotalkBot
                 if (context.Handle == IntPtr.Zero) throw new IOException("카카오톡 메모리 열기 실패: " + Marshal.GetLastWin32Error());
                 bool wow64;
                 if (!IsWow64Process(context.Handle, out wow64) || wow64) throw new NotSupportedException("64비트 카카오톡만 지원합니다.");
+                if (resolvedPid != context.Pid || resolvedStart != context.Start || resolvedBase != context.ModuleBase ||
+                    !ValidMentionTable((address, length) => Bytes(context, address, length), resolvedVtable))
+                {
+                    resolvedVtable = ResolveMentionTable((address, length) => Bytes(context, address, length), context.ModuleBase, context.ModuleSize);
+                    resolvedPid = context.Pid; resolvedStart = context.Start; resolvedBase = context.ModuleBase;
+                }
+                context.Vtable = resolvedVtable;
                 ulong root = (ulong)GetWindowLongPtr(context.Input, 0).ToInt64();
                 context.Editor = U64(context, root + 0x48);
                 ulong getter = U64(context, context.Vtable + 15 * 8);
@@ -403,6 +413,76 @@ namespace KakaotalkBot
             finally { Release(embedded); Release(font); Release(range); Release(document); }
         }
 
+        // 실행 파일은 디스크에서 압축되어 있을 수 있으므로 로드된 모듈의 PE 섹션을 읽습니다.
+        // 다른 프로세스 메모리에 쓰거나 함수를 실행하지 않는 탐색입니다.
+        internal static ulong ResolveMentionTable(Func<ulong, int, byte[]> read, ulong module, int moduleSize)
+        {
+            if (moduleSize < 4096 || moduleSize > 256 * 1024 * 1024) throw new NotSupportedException("카카오톡 모듈 크기를 확인하지 못했습니다.");
+            var header = read(module, 4096);
+            if (header == null || header[0] != 'M' || header[1] != 'Z') throw new NotSupportedException("카카오톡 모듈 헤더 오류");
+            int pe = BitConverter.ToInt32(header, 60);
+            if (pe < 64 || pe > 3500 || BitConverter.ToUInt32(header, pe) != 0x4550 || BitConverter.ToUInt16(header, pe + 4) != 0x8664)
+                throw new NotSupportedException("64비트 PE 모듈이 아닙니다.");
+            int count = BitConverter.ToUInt16(header, pe + 6), first = pe + 24 + BitConverter.ToUInt16(header, pe + 20);
+            if (count < 1 || count > 96 || first + count * 40 > header.Length) throw new NotSupportedException("PE 섹션 범위 오류");
+            var sections = new List<Tuple<ulong, int, uint>>();
+            for (int i = 0; i < count; i++)
+            {
+                int offset = first + i * 40;
+                uint size = BitConverter.ToUInt32(header, offset + 8), rva = BitConverter.ToUInt32(header, offset + 12);
+                uint flags = BitConverter.ToUInt32(header, offset + 36);
+                if (rva > moduleSize || size > moduleSize - rva) throw new NotSupportedException("PE 섹션이 모듈 범위를 벗어났습니다.");
+                if (size > 0) sections.Add(Tuple.Create(module + rva, (int)size, flags));
+            }
+            var getters = new HashSet<ulong>();
+            foreach (var section in sections.Where(x => (x.Item3 & 0x20000000) != 0))
+                foreach (var block in MentionBlocks(read, section))
+                    for (int i = 0; i + 13 <= block.Item2.Length; i++)
+                        if (GetterPattern(block.Item2, i) && ValidMentionGetter(read, block.Item1 + (ulong)i)) getters.Add(block.Item1 + (ulong)i);
+            var tables = new HashSet<ulong>();
+            foreach (var section in sections.Where(x => (x.Item3 & 0x40000000) != 0 && (x.Item3 & 0x20000000) == 0))
+                foreach (var block in MentionBlocks(read, section))
+                    for (int i = 0; i + 8 <= block.Item2.Length; i += 8)
+                    {
+                        ulong slot = block.Item1 + (ulong)i;
+                        if (slot < section.Item1 + 120 || !getters.Contains(BitConverter.ToUInt64(block.Item2, i))) continue;
+                        ulong table = slot - 120;
+                        var prefix = read(table, 24);
+                        if (prefix != null && Enumerable.Range(0, 3).All(n => sections.Any(x => (x.Item3 & 0x20000000) != 0 &&
+                            BitConverter.ToUInt64(prefix, n * 8) >= x.Item1 && BitConverter.ToUInt64(prefix, n * 8) - x.Item1 < (ulong)x.Item2))) tables.Add(table);
+                    }
+            if (tables.Count != 1) throw new NotSupportedException("현재 버전의 멘션 클래스 테이블을 유일하게 찾지 못했습니다. 후보 " + tables.Count + "개");
+            return tables.Single();
+        }
+        private static IEnumerable<Tuple<ulong, byte[]>> MentionBlocks(Func<ulong, int, byte[]> read, Tuple<ulong, int, uint> section)
+        {
+            for (int offset = 0; offset < section.Item2; offset += 4096)
+            {
+                ulong address = section.Item1 + (ulong)offset;
+                int length = Math.Min(4096 + 16, section.Item2 - offset);
+                var bytes = read(address, length) ?? read(address, Math.Min(4096, section.Item2 - offset));
+                if (bytes != null) yield return Tuple.Create(address, bytes);
+            }
+        }
+        private static bool GetterPattern(byte[] code, int i)
+        {
+            return code != null && i + 13 <= code.Length && code[i] == 0x0F && code[i+1] == 0x10 && code[i+2] == 0x05 &&
+                code[i+7] == 0x33 && code[i+8] == 0xC0 && code[i+9] == 0x0F && code[i+10] == 0x11 && code[i+11] == 0x02 && code[i+12] == 0xC3;
+        }
+        private static bool ValidMentionGetter(Func<ulong, int, byte[]> read, ulong getter)
+        {
+            var code = read(getter, 13);
+            if (!GetterPattern(code, 0)) return false;
+            var guid = read((ulong)((long)getter + 7 + BitConverter.ToInt32(code, 3)), 16);
+            return guid != null && new Guid(guid) == MentionClass;
+        }
+        private static bool ValidMentionTable(Func<ulong, int, byte[]> read, ulong table)
+        {
+            if (table == 0) return false;
+            var pointer = read(table + 120, 8);
+            return pointer != null && ValidMentionGetter(read, BitConverter.ToUInt64(pointer, 0));
+        }
+
         private static byte[] Bytes(Context context, ulong address, int length)
         {
             if (address < 0x10000 || address > 0x7FFFFFFFFFFF || length <= 0) return null;
@@ -420,7 +500,8 @@ namespace KakaotalkBot
         private sealed class Context : IDisposable
         {
             internal string Title; internal int Pid; internal long Start; internal IntPtr Input, Handle;
-            internal ulong Vtable, Editor, RichEditBase, RichEditSize;
+            internal ulong Vtable, Editor, RichEditBase, RichEditSize, ModuleBase;
+            internal int ModuleSize;
             public void Dispose() { if (Handle != IntPtr.Zero) { CloseHandle(Handle); Handle = IntPtr.Zero; } }
         }
         [StructLayout(LayoutKind.Sequential)]

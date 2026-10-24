@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Drawing;
+using System.Diagnostics;
 using System.Linq;
 namespace OpenChatRoomCleaner
 {
@@ -16,10 +17,13 @@ namespace OpenChatRoomCleaner
     {
         readonly RunMode mode;
         readonly bool reverse;
-        internal Workflow(RunMode mode=RunMode.Preview,bool reverse=false) { this.mode=mode;this.reverse=reverse; }
+        readonly Func<long> clock;
+        internal const long EdgeStableMilliseconds=600;
+        internal Workflow(RunMode mode=RunMode.Preview,bool reverse=false,Func<long> clock=null)
+        { this.mode=mode;this.reverse=reverse;this.clock=clock ?? (()=>Stopwatch.GetTimestamp()*1000/Stopwatch.Frequency); }
         internal Stage Stage=Stage.OpenList;
         internal int Attempts;
-        ulong lastHash; int unchanged; bool scrollIssued;
+        ulong lastHash; long stableSince; bool scrollIssued, hasHash;
         internal Decision Decide(Observation o)
         {
             if(Stage==Stage.Complete) return new Decision(ActionKind.Complete,"운영진/본인 외 참여자가 없는 목록 경계 확인");
@@ -36,16 +40,21 @@ namespace OpenChatRoomCleaner
                 if(!o.ListViewportValid && !o.ListValid) return Wait("스크롤할 목록 영역 인식 대기");
                 bool reachedEdge=StableAfterScroll(o.ListHash);
                 if(reachedEdge && o.ListValid) { Stage=Stage.Scan; ResetScroll(); }
+                else if(scrollIssued)return Wait("스크롤 반영 및 목록 경계 안정화 대기");
                 else return new Decision(reverse?ActionKind.ScrollDown:ActionKind.ScrollUp,
                     reverse?"목록 맨 아래 확인 중":"목록 맨 위 확인 중",o.ScrollPoint);
             }
             if(Stage==Stage.Scan)
             {
                 if(!o.ListValid) return Wait("참여자 행 인식 재시도");
+                // 스크롤 입력 직후의 이전 화면으로 사용자를 선택하지 않습니다.
+                if(scrollIssued && !StableAfterScroll(o.ListHash) && scrollIssued)
+                    return Wait("스크롤 화면 갱신 대기");
                 var row=reverse?o.Rows.LastOrDefault(r=>!r.Protected):o.Rows.FirstOrDefault(r=>!r.Protected);
                 if(row!=null) return new Decision(ActionKind.Click,(reverse?"역순 · ":"정순 · ")+"일반 참여자 프로필 열기",row.Click);
                 if(o.Rows.Any(r=>r.Uncertain))return Wait("운영진 배지 여부가 불확실한 행이 있어 재인식 중");
                 if(StableAfterScroll(o.ListHash)) { Stage=Stage.Complete; return Decide(o); }
+                if(scrollIssued)return Wait("목록 경계 안정화 대기");
                 return new Decision(reverse?ActionKind.ScrollUp:ActionKind.ScrollDown,"운영진/본인 제외 · "+(reverse?"위쪽":"아래쪽")+" 목록 확인",o.ScrollPoint);
             }
             if(Stage==Stage.Profile && !o.ProfileMenu.IsEmpty) return Click(o.ProfileMenu,"내보내기&신고 메뉴 열기");
@@ -59,7 +68,7 @@ namespace OpenChatRoomCleaner
         }
         internal void Applied(Decision d)
         {
-            if(d.Kind==ActionKind.ScrollDown || d.Kind==ActionKind.ScrollUp) { scrollIssued=true; return; }
+            if(d.Kind==ActionKind.ScrollDown || d.Kind==ActionKind.ScrollUp) { scrollIssued=true; stableSince=clock(); return; }
             if(d.Kind!=ActionKind.Click && d.Kind!=ActionKind.ConfirmRemoval) return;
             if(Stage==Stage.Scan) Stage=Stage.Profile;
             else if(Stage==Stage.Profile) Stage=Stage.RemoveMenu;
@@ -68,10 +77,18 @@ namespace OpenChatRoomCleaner
         }
         bool StableAfterScroll(ulong hash)
         {
-            if(scrollIssued && lastHash==hash) unchanged++; else unchanged=0;
-            lastHash=hash; scrollIssued=false; return unchanged>=3;
+            long now=clock();
+            if(!hasHash || hash!=lastHash)
+            {
+                hasHash=true;lastHash=hash;stableSince=now;scrollIssued=false;
+                return false;
+            }
+            // 실제 휠 입력 후 같은 목록이 일정 시간 유지되어야 경계로 인정합니다.
+            // 관찰 횟수와 무관하므로 빠른 재검색이 완료 판정을 앞당기지 않습니다.
+            return scrollIssued && now-stableSince>=EdgeStableMilliseconds;
         }
-        void ResetScroll() { unchanged=0;lastHash=0;scrollIssued=false; }
+        internal void InterruptObservation() { stableSince=clock(); }
+        void ResetScroll() { hasHash=false;lastHash=0;scrollIssued=false;stableSince=clock(); }
         static Decision Click(Rectangle r,string text) { return new Decision(ActionKind.Click,text,new Point(r.Left+r.Width/2,r.Top+r.Height/2)); }
         static Decision Wait(string text) { return new Decision(ActionKind.Wait,text); }
     }

@@ -6,10 +6,65 @@ internal static class MentionSenderTests
 {
     private static int passed;
     private const long Target = 8172472438151128507L;
+    private static void RejectModule(byte[] data)
+    {
+        try { ResolveModule(data, 0x140000000UL); }
+        catch (NotSupportedException) { return; }
+        throw new Exception("지원하지 않는 테이블이 허용되었습니다.");
+    }
+    private static ulong ResolveModule(byte[] data, ulong address)
+    {
+        return KakaoInputMentions.ResolveMentionTable((a, n) =>
+        {
+            if (a < address || a - address > (ulong)data.Length || (ulong)n > (ulong)data.Length - (a - address)) return null;
+            var result = new byte[n]; Array.Copy(data, (int)(a - address), result, 0, n); return result;
+        }, address, data.Length);
+    }
+    private static byte[] MentionModule(ulong address)
+    {
+        var data = new byte[0x5000];
+        Action<int, byte[]> put = (offset, value) => Array.Copy(value, 0, data, offset, value.Length);
+        data[0] = (byte)'M'; data[1] = (byte)'Z';
+        put(60, BitConverter.GetBytes(128)); put(128, BitConverter.GetBytes(0x4550));
+        put(132, BitConverter.GetBytes((ushort)0x8664)); put(134, BitConverter.GetBytes((ushort)2));
+        put(148, BitConverter.GetBytes((ushort)240));
+        int section = 392;
+        put(section + 8, BitConverter.GetBytes(0x2000)); put(section + 12, BitConverter.GetBytes(0x1000));
+        put(section + 36, BitConverter.GetBytes(0x60000000));
+        section += 40;
+        put(section + 8, BitConverter.GetBytes(0x2000)); put(section + 12, BitConverter.GetBytes(0x3000));
+        put(section + 36, BitConverter.GetBytes(0x40000000));
+        // 페이지 경계를 가로지르는 함수도 탐색해야 합니다.
+        put(0x1FFA, new byte[] { 15, 16, 5, 0, 0, 0, 0, 51, 192, 15, 17, 2, 195 });
+        put(0x1FFD, BitConverter.GetBytes(0x3800 - (0x1FFA + 7)));
+        put(0x3800, new Guid("459e8c62-070f-42b0-b92b-64dd59af0ebe").ToByteArray());
+        for (int i = 0; i < 3; i++) put(0x3100 + i * 8, BitConverter.GetBytes(address + 0x1100));
+        put(0x3178, BitConverter.GetBytes(address + 0x1FFA));
+        return data;
+    }
     private static int Main()
     {
         try
         {
+            Run("멘션 테이블은 모듈 주소가 바뀌어도 탐색", () =>
+            {
+                foreach (ulong address in new[] { 0x140000000UL, 0x7FF600000000UL })
+                {
+                    var data = MentionModule(address);
+                    Check(ResolveModule(data, address) == address + 0x3100, "재배치 탐색");
+                }
+            });
+            Run("다른 클래스 GUID는 멘션으로 선택하지 않음", () =>
+            {
+                var data = MentionModule(0x140000000UL); data[0x3800] ^= 1;
+                RejectModule(data);
+            });
+            Run("멘션 테이블 후보가 둘이면 임의 선택 금지", () =>
+            {
+                var data = MentionModule(0x140000000UL);
+                Array.Copy(data, 0x3100, data, 0x3200, 128);
+                RejectModule(data);
+            });
             Run("정확한 64비트 ID·한글·여러 줄 본문·1회 전송", () =>
             {
                 var input = new FakeInput(); var sender = Sender(input);
