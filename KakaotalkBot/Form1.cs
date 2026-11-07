@@ -131,6 +131,7 @@ namespace KakaotalkBot
             if (databaseError != null) databaseStatus.Text = databaseError;
             if (bot.RoomRecycleStatus != null) databaseStatus.Text = bot.RoomRecycleStatus;
             if (bot.LastSendError != null) databaseStatus.Text = bot.LastSendError;
+            if (StaInputWorker.Instance.CommandError != null) databaseStatus.Text = StaInputWorker.Instance.CommandError;
             if (bot.LastProcessingError != null) databaseStatus.Text = bot.LastProcessingError;
             if (bot.IsBotRunning)
             {

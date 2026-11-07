@@ -41,9 +41,9 @@ namespace KakaotalkBot
             }
         }
         private IList<IList<object>> DecodeRows(string title, IList<IList<object>> rows)
-        { return Identity.Transform(title, rows, false, true); }
+        { return title == "DB_Governance" ? rows : Identity.Transform(title, rows, false, true); }
         private IList<IList<object>> EncodeRows(string title, IList<IList<object>> rows)
-        { return Identity.Transform(title, rows, true, false); }
+        { return title == "DB_Governance" ? rows : Identity.Transform(title, rows, true, false); }
 
         private static readonly string[] UserHeaders =
             { "nickname", "take_attendance", "attendance_at", "point", "popularity", "password", "contribution", "user_id", "leave_count", "kick_count", "experience", "level" };
@@ -83,7 +83,7 @@ namespace KakaotalkBot
         public void WriteUserTable(List<List<object>> users)
         { WriteUserData(users, null); }
 
-        internal void WriteUserData(List<List<object>> users, UserActivityStore activity, RoomOperatorStore operators = null, OperationsStore operations = null, RoomTitleStore titles = null, DailyQuestStore quests = null)
+        internal void WriteUserData(List<List<object>> users, UserActivityStore activity, RoomOperatorStore operators = null, OperationsStore operations = null, RoomTitleStore titles = null, DailyQuestStore quests = null, GovernanceStore governance = null)
         {
             lock (lockObject)
             {
@@ -108,6 +108,7 @@ namespace KakaotalkBot
                         Values = EncodeRows(title, rows.Cast<IList<object>>().ToList()) });
                 };
                 add(Database.UserSheetName, 2, users, 12);
+                if (governance != null) add("DB_Governance", 2, governance.ToRows(), 2);
                 if (operations != null) add("DB_Operations", 2, operations.ToRows(), 3);
                 if (titles != null) add("DB_RoomTitles", 2, titles.ToRows(), 2);
                 if (quests != null) add("DB_DailyQuests", 2, quests.ToRows(), 2);
@@ -123,6 +124,7 @@ namespace KakaotalkBot
                 if (extensions.Count > 0) api.Spreadsheets.BatchUpdate(new BatchUpdateSpreadsheetRequest { Requests = extensions }, sheetId).Execute();
                 // 사용자 상태와 새 이력을 한 요청에 저장합니다. ID와 경험치는 문자열 + RAW로 정밀도를 유지합니다.
                 if (ranges.Count > 0) api.Spreadsheets.Values.BatchUpdate(new BatchUpdateValuesRequest { ValueInputOption = "RAW", Data = ranges }, sheetId).Execute();
+                if (governance != null) governance.MarkSaved();
                 if (titles != null) titles.Dirty = false;
                 if (quests != null) quests.Dirty = false;
                 if (activity != null) activity.MarkSaved();
@@ -146,7 +148,7 @@ namespace KakaotalkBot
                     SheetId = user.Properties.SheetId, Dimension = "COLUMNS", Length = 12 - user.Properties.GridProperties.ColumnCount } });
                 var definitions = new Dictionary<string, string[]> { { "DB_RoomUsers", UserActivityStore.RoomHeaders },
                     { "DB_RoomEvents", UserActivityStore.EventHeaders }, { "DB_NicknameHistory", UserActivityStore.NicknameHeaders },
-                    { "DB_RoomOperators", RoomOperatorStore.Headers }, { "DB_Operations", OperationsStore.Headers }, { "DB_RoomTitles", RoomTitleStore.Headers }, { "DB_DailyQuests", DailyQuestStore.Headers } };
+                    { "DB_RoomOperators", RoomOperatorStore.Headers }, { "DB_Operations", OperationsStore.Headers }, { "DB_RoomTitles", RoomTitleStore.Headers }, { "DB_DailyQuests", DailyQuestStore.Headers }, { "DB_Governance", GovernanceStore.Headers } };
                 var sheetIds = new HashSet<int>(sheets.Select(s => s.Properties.SheetId.Value));
                 int newSheetId = 1;
                 foreach (var definition in definitions)
@@ -194,7 +196,7 @@ namespace KakaotalkBot
                         throw new FormatException(title + " 중간에 빈 행이 있습니다.");
                     // ID 컬럼은 숫자 셀로 저장된 반올림 값을 허용하지 않습니다.
                     int[] idColumns = title == "DB_RoomOperators" ? new[] { 0, 1, 8, 9 } : title == "DB_RoomUsers" ? new[] { 0, 1, 5, 6 } : title == "DB_RoomEvents" ? new[] { 1, 2, 5 } : new[] { 1, 2, 6 };
-                    foreach (int column in (title == "DB_Operations" || title == "DB_RoomTitles" || title == "DB_DailyQuests") ? new int[0] : idColumns)
+                    foreach (int column in (title == "DB_Governance" || title == "DB_Operations" || title == "DB_RoomTitles" || title == "DB_DailyQuests") ? new int[0] : idColumns)
                         if (row.Count <= column || !(row[column] is string)) throw new FormatException(title + "의 ID는 텍스트여야 합니다.");
                     result.Add(row.Select(v => Convert.ToString(v, CultureInfo.InvariantCulture)).Concat(Enumerable.Repeat("", headers.Length - row.Count)).ToList());
                 }

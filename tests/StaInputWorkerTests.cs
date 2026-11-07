@@ -43,6 +43,52 @@ class StaInputWorkerTests
         Check(!worker.TryInvoke<bool>(() => { throw new InvalidOperationException("시험 창 상태 변경"); }, out recycleResult, out recycleError) &&
             recycleError.Contains("창 상태"), "창 상태 실패를 결과로 반환");
         Check(worker.Invoke(() => 43) == 43, "재열기 실패 후 입력 작업자 유지");
+        var macro = new StaInputWorker(8);
+        var trace = new List<string>();
+        var macroStarted = new ManualResetEventSlim(false);
+        var macroRelease = new ManualResetEventSlim(false);
+        var backgroundDone = new ManualResetEventSlim(false);
+        int producer = Thread.CurrentThread.ManagedThreadId;
+        Check(macro.TryBuildCommand(() =>
+        {
+            Check(Thread.CurrentThread.ManagedThreadId == producer, "생성은 생산자 스레드");
+            macro.Invoke(() => { trace.Add("first"); macroStarted.Set(); macroRelease.Wait(); });
+            macro.Invoke(() => trace.Add("last"));
+        }), "매크로 명령 큐 등록");
+        try
+        {
+            Check(macroStarted.Wait(5000), "실행 완료 전 생산자 반환");
+            Check(macro.TryBuildCommand(() => macro.Invoke(() => trace.Add("second"))), "첫 명령 실행 중 다음 명령 생성·등록 완료");
+            macro.TryPostBackground(new object(), () => { trace.Add("background"); backgroundDone.Set(); });
+            Check(!backgroundDone.Wait(100), "명령 실행 중 보이스룸 명령 대기");
+        }
+        finally { macroRelease.Set(); }
+        Check(backgroundDone.Wait(5000), "명령 전체 종료 후 보이스룸 실행");
+        Check(string.Join(",", trace) == "first,last,second,background", "명령 내 단계 순차 실행");
+        var recovered = new ManualResetEventSlim(false);
+        macro.TryBuildCommand(() => macro.Invoke(() => { throw new Exception("명령 오류"); }));
+        macro.TryPostBackground(new object(), () => recovered.Set());
+        Check(recovered.Wait(5000), "명령 실행 예외 후 다음 명령 진행");
+        Check(macro.CommandError != null, "비동기 매크로 오류 표시");
+        macro.Complete();
+        var closing = new StaInputWorker(4);
+        var building = new ManualResetEventSlim(false);
+        var finishBuild = new ManualResetEventSlim(false);
+        var drained = new ManualResetEventSlim(false);
+        var accepted = Task.Run(() => closing.TryBuildCommand(() =>
+        {
+            building.Set(); finishBuild.Wait();
+            closing.Invoke(() => drained.Set());
+        }));
+        try
+        {
+            Check(building.Wait(5000), "종료 경합 시험: 명령 생성 중");
+            closing.Complete();
+            Check(!closing.TryBuildCommand(() => { throw new Exception("종료 후 생성됨"); }), "종료 후 새 생산자 접수 거부");
+        }
+        finally { finishBuild.Set(); }
+        Check(accepted.Wait(5000) && accepted.Result && drained.Wait(5000), "종료와 경합한 기존 접수 명령 누락 없이 실행");
+
         var limited = new StaInputWorker(2);
         var entered = new ManualResetEventSlim(false);
         var release = new ManualResetEventSlim(false);

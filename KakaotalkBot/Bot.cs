@@ -5,7 +5,7 @@ using System.Text;
 
 namespace KakaotalkBot
 {
-    public class Bot
+    public partial class Bot
     {
         public struct Chat
         {
@@ -36,7 +36,8 @@ namespace KakaotalkBot
             }
         }
 
-        private bool isBotRunning = false;
+        private volatile bool isBotRunning = false;
+        private long macroSession;
         public bool IsBotRunning
         {
             get { return isBotRunning; }
@@ -176,7 +177,13 @@ namespace KakaotalkBot
             Database.Instance.MaintainMonth();
             ProcessReset();
             ProcessDatabaseMessages();
-            ProcessCommand();
+            TickGovernance();
+            if (commands.Count > 0)
+            {
+                var room = SelectedRoom;
+                long session = System.Threading.Interlocked.Read(ref macroSession);
+                StaInputWorker.Instance.TryBuildCommand(ProcessCommand, () => IsBotRunning && session == System.Threading.Interlocked.Read(ref macroSession) && ReferenceEquals(room, SelectedRoom));
+            }
             if (!IsBotRunning) return;
             MaintainChatWindow(DateTime.UtcNow, () => WindowsMacro.Instance.RecycleChatRoom(TargetWindow, SelectedRoom.ProcessId));
             if (soliloquyTimer.Check(Time.DeltaTime))
@@ -224,6 +231,7 @@ namespace KakaotalkBot
 
         public void Stop()
         {
+            System.Threading.Interlocked.Increment(ref macroSession);
             isBotRunning = false;
             Database.Instance.BeginContentRefresh();
             if (receiver != null) receiver.Dispose();
@@ -285,7 +293,8 @@ namespace KakaotalkBot
             }
             if (chat.Roster != null)
             {
-                if (SelectedRoom != null && chat.ChatId == SelectedRoom.ChatId) Database.Instance.ObserveRoster(chat.Roster);
+                if (SelectedRoom != null && chat.ChatId == SelectedRoom.ChatId)
+                { Database.Instance.ObserveRoster(chat.Roster); ObserveGovernance(chat.Roster); }
                 return false;
             }
             if (chat.IsDirect)
@@ -301,6 +310,7 @@ namespace KakaotalkBot
             if (chat.RoomEvent == ChatRoomEvent.Leave || chat.RoomEvent == ChatRoomEvent.Kick)
             {
                 Database.Instance.Operators.Invalidate(chat.ChatId, chat.AuthorId, chat.LogId, -3);
+                if (Database.Instance.Governance != null) Database.Instance.Governance.Leave(chat.ChatId, Database.Instance.GovernanceUser(chat.AuthorId));
                 if (!Database.Instance.RecordDeparture(chat.AuthorId, chat.Nickname, chat.ChatId, chat.LogId, chat.RoomEvent == ChatRoomEvent.Kick, chat.SendAt)) return false;
                 departureSavePending = true;
                 ChatEventDiagnostics.Write("counted", chat);
@@ -385,6 +395,7 @@ namespace KakaotalkBot
             }
             Command command = commands.Dequeue();
             if (command.AuthorId <= 0 || SelectedRoom == null || command.ChatId != SelectedRoom.ChatId) return;
+            if (TryGovernanceCommand(command)) return;
             if (OperatorCommandPolicy.RequiresOperator(command.Keyword))
             {
                 string permissionError;
@@ -471,6 +482,8 @@ namespace KakaotalkBot
             if (command.Keyword == "/?" || command.Keyword == "/명령어" || command.Keyword == "/훈장" || command.Keyword == "/공지사항" || command.Keyword == "/패치노트" || command.Keyword == "/서브방")
             {
                 string answer = Database.Instance.GetAnswer(command.Keyword);
+                if ((command.Keyword == "/?" || command.Keyword == "/명령어") && Database.Instance.Governance != null && Database.Instance.Governance.Enabled(command.ChatId))
+                    answer = (answer ?? "") + "\n\n[대법관 선거]\n/선거 · /후보 · /대법관 · /선거결과\n/출마 공약 · /출마취소\n/투표 1 3 5 (최대 10명, 공개투표) · /투표취소\n[관리]\n/내보내기 @유저 사유\n/내보낸목록 → /내보내기해제 번호 사유\n대법관·방장·부방장 사용 가능\n방장: /선거설정 켜기 또는 끄기";
 
                 if (string.IsNullOrEmpty(answer) == false)
                 {

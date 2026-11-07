@@ -99,6 +99,9 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
+    <Reference Include="Windows"><HintPath>$([System.IO.Directory]::GetFiles('$(MSBuildProgramFiles32)\Windows Kits\10\UnionMetadata', 'Windows.winmd', System.IO.SearchOption.AllDirectories).GetValue(0))</HintPath><IsWinMDFile>true</IsWinMDFile><Private>false</Private></Reference>
+    <Reference Include="System.Runtime.WindowsRuntime"><HintPath>$(SystemRoot)\Microsoft.NET\Framework64\v4.0.30319\System.Runtime.WindowsRuntime.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System.Runtime" />
     <Reference Include="UIAutomationClient" />
     <Reference Include="UIAutomationTypes" />
     <Reference Include="WindowsBase" />
@@ -106,6 +109,15 @@
   <ItemGroup>
     <Compile Include="Article.cs" />
     <Compile Include="Bot.cs" />
+    <Compile Include="GovernanceStore.cs" />
+    <Compile Include="ModerationOcr.cs" />
+    <Compile Include="BannedMemberMemory.cs" />
+    <Compile Include="ModerationMacro.cs" />
+    <Compile Include="ModerationCommands.cs" />
+    <Compile Include="..\tools\OpenChatRoomCleaner\Desktop.cs"><Link>ModerationShared\Desktop.cs</Link></Compile>
+    <Compile Include="..\tools\OpenChatRoomCleaner\Vision.cs"><Link>ModerationShared\Vision.cs</Link></Compile>
+    <Compile Include="..\tools\OpenChatRoomCleaner\Workflow.cs"><Link>ModerationShared\Workflow.cs</Link></Compile>
+    <Compile Include="GovernanceCommands.cs" />
     <Compile Include="Command.cs" />
     <Compile Include="LocoMentionSender.cs" />
     <Compile Include="KakaoInputMentions.cs" />
@@ -177,6 +189,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <Content Include="..\tools\OpenChatRoomCleaner\Assets\*.png"><Link>ModerationAssets\%(Filename)%(Extension)</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="ModerationAssets\*.png"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <Content Include="BotIdentity.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

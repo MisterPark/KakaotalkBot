@@ -23,7 +23,6 @@ namespace KakaotalkBot
         private int clickPending;
         private bool clickProposed;
         private long cycleSession;
-        private long presenterOpened;
         private string targetWindow = string.Empty;
         private Frame frame1, frame2, frame3;
         private sealed class Frame
@@ -155,17 +154,9 @@ namespace KakaotalkBot
             long tick = Tick;
             long previous = Interlocked.Exchange(ref lastInputTick, tick);
             long elapsed = previous == 0 ? 0 : (tick - previous) * 1000 / System.Diagnostics.Stopwatch.Frequency;
-            if (previous == 0) Interlocked.Exchange(ref presenterOpened, 0);
             if (screenCaptureTimer.Check(elapsed)) ProcessCaptureScreen();
             if (screenCaptureTimer2.Check(elapsed)) ProcessCaptureScreen2();
             if (screenCaptureTimer3.Check(elapsed)) ProcessCaptureScreen3();
-            long opened = Interlocked.Read(ref presenterOpened);
-            if (opened != 0)
-            {
-                if (Age(opened) > 1500) Interlocked.Exchange(ref presenterOpened, 0);
-                else if (frame1 != null && frame1.Tick > opened) ProcessAutoPresenter2();
-                return;
-            }
             if (acceptTimer.Check(elapsed)) ProcessAccept();
             if (joinTimer.Check(elapsed)) ProcessJoin();
             if (voiceRoomExitTimer.Check(elapsed)) ProcessVoiceRoomExit();
@@ -235,7 +226,7 @@ namespace KakaotalkBot
                     inputStatus = null;
                     WindowsMacro.Instance.SetCursor(point.X, point.Y);
                     if (right) WindowsMacro.Instance.ClickRight(); else WindowsMacro.Instance.ClickLeft();
-                    if (presenter) Interlocked.Exchange(ref presenterOpened, Tick);
+                    if (presenter) CompletePresenterMacro(frame, session);
                 }
                 finally { Interlocked.Exchange(ref clickPending, 0); }
             });
@@ -351,9 +342,35 @@ namespace KakaotalkBot
             if (!MatchAndClick(CurrentScreen, frame1, manager, true, true))
                 MatchAndClick(CurrentScreen, frame1, manager2, true, true);
         }
-        private void ProcessAutoPresenter2()
+        // 메뉴를 여는 클릭과 항목 클릭은 같은 입력 작업 안에서 끝냅니다.
+        // 화면 캡처·검색만 별도 작업에서 수행하고 입력 작업자는 다른 매크로를 받지 않습니다.
+        private void CompletePresenterMacro(Frame original, long session)
         {
-            if (MatchAndClick(CurrentScreen, frame1, host)) Interlocked.Exchange(ref presenterOpened, 0);
+            var point = System.Threading.Tasks.Task.Run(() =>
+            {
+                long started = Tick;
+                while (!disposed && IsBotRunning && session == Interlocked.Read(ref inputSession) && Age(started) < 1500)
+                {
+                    lock (screenGate)
+                    {
+                        if (disposed) return (Point?)null;
+                        Frame current;
+                        using (var screen = CaptureFrame(true, 1, out current))
+                        {
+                            Point at;
+                            if (current == null || current.Handle != original.Handle || current.Position != original.Position || current.Size != original.Size)
+                                return (Point?)null;
+                            if (Match(screen, host, out at)) return (Point?)new Point(current.Origin.X + at.X, current.Origin.Y + at.Y);
+                        }
+                    }
+                    Thread.Sleep(20);
+                }
+                return (Point?)null;
+            }).GetAwaiter().GetResult();
+            if (!point.HasValue || disposed || !IsBotRunning || session != Interlocked.Read(ref inputSession))
+            { inputStatus = "진행자 메뉴 항목을 찾지 못해 매크로 종료"; return; }
+            WindowsMacro.Instance.SetCursor(point.Value.X, point.Value.Y);
+            WindowsMacro.Instance.ClickLeft();
         }
         private void ProcessAccept()
         {

@@ -132,11 +132,15 @@ namespace KakaotalkBot
         private UserActivityStore activity = new UserActivityStore();
         internal RoomOperatorStore Operators = new RoomOperatorStore();
         internal OperationsStore Operations = new OperationsStore();
+        internal GovernanceStore Governance;
+        private BotIdentity governanceIdentity;
+        internal string GovernanceUser(long user) { return governanceIdentity.Encode(user); }
+        internal long GovernanceUserId(string user) { return governanceIdentity.Decode(user); }
         internal RoomTitleStore Titles = new RoomTitleStore();
         private long lastMonthMaintenanceSecond = -1;
         internal DailyQuestStore Quests = new DailyQuestStore();
-        public bool HasPendingActivity { get { return activity.Dirty || Operators.Dirty || Operations.Dirty || Titles.Dirty || Quests.Dirty; } }
-        internal void ConfirmActivitySaved() { activity.MarkSaved(); Operators.Dirty = false; Operations.Dirty = false; Operations.ResetPending = false; Titles.Dirty = false; Quests.Dirty = false; }
+        public bool HasPendingActivity { get { return activity.Dirty || Operators.Dirty || Operations.Dirty || Titles.Dirty || Quests.Dirty || Governance != null && Governance.Dirty; } }
+        internal void ConfirmActivitySaved() { activity.MarkSaved(); Operators.Dirty = false; Operations.Dirty = false; Operations.ResetPending = false; Titles.Dirty = false; Quests.Dirty = false; if (Governance != null) Governance.MarkSaved(); }
         internal bool CanManageRoom(long chatId, long userId)
         { string error; return Operators.CheckManagement(chatId, userId, BotIdentity.SuperUserId, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), out error); }
         public bool IsRoomOperator(long chatId, long userId)
@@ -213,6 +217,9 @@ namespace KakaotalkBot
                 var quests = new DailyQuestStore(); quests.Load(keywordSheet.ReadActivityTable("DB_DailyQuests", DailyQuestStore.Headers));
                 if (quests.Rows.Values.Any(r => !ids.Contains(r.UserId))) throw new FormatException("퀘스트 DB에 등록되지 않은 사용자가 있습니다.");
                 Quests = quests;
+                governanceIdentity = BotIdentity.Load(spreadsheetId);
+                Governance = new GovernanceStore(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "Governance-" + spreadsheetId + ".json"),
+                    keywordSheet.ReadActivityTable("DB_Governance", GovernanceStore.Headers));
                 MaintainMonth();
             }
             catch (Exception error) { UserStorageReady = false; UserStorageError = "사용자 DB 읽기 실패: " + error.Message; throw; }
@@ -247,7 +254,7 @@ namespace KakaotalkBot
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
-                keywordSheet.WriteUserData(userTable.Select(user => user.ToRow()).ToList(), activity, Operators, Operations, Titles, Quests);
+                keywordSheet.WriteUserData(userTable.Select(user => user.ToRow()).ToList(), activity, Operators, Operations, Titles, Quests, Governance);
                 UserStorageError = null;
             }
             catch (Exception error) { UserStorageError = "사용자 DB 저장 실패: " + error.Message; throw; }
