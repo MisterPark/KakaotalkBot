@@ -482,8 +482,13 @@ namespace KakaotalkBot
             if (command.Keyword == "/?" || command.Keyword == "/명령어" || command.Keyword == "/훈장" || command.Keyword == "/공지사항" || command.Keyword == "/패치노트" || command.Keyword == "/서브방")
             {
                 string answer = Database.Instance.GetAnswer(command.Keyword);
-                if ((command.Keyword == "/?" || command.Keyword == "/명령어") && Database.Instance.Governance != null && Database.Instance.Governance.Enabled(command.ChatId))
-                    answer = (answer ?? "") + "\n\n[대법관 선거]\n/선거 · /후보 · /대법관 · /선거결과\n/출마 공약 · /출마취소\n/투표 1 3 5 (최대 10명, 공개투표) · /투표취소\n[관리]\n/내보내기 @유저 사유\n/내보낸목록 → /내보내기해제 번호 사유\n대법관·방장·부방장 사용 가능\n방장: /선거설정 켜기 또는 끄기";
+                if (command.Keyword == "/?" || command.Keyword == "/명령어")
+                {
+                    if (string.IsNullOrEmpty(answer))
+                        answer = Database.Instance.GetAnswer(command.Keyword == "/?" ? "/명령어" : "/?") ?? "[명령어 목록]";
+                    answer = AppendGovernanceHelp(answer, command.ChatId);
+                    if (!answer.Contains(new string('\u200B', 500))) answer = FoldChatOutput(answer);
+                }
 
                 if (string.IsNullOrEmpty(answer) == false)
                 {
