@@ -620,20 +620,6 @@ namespace KakaotalkBot
             return keywordList;
         }
 
-        private static string CompleteCommandHelp(string text)
-        {
-            text = text.Replace("/네임드 [페이지]", "/네임드")
-                .Replace("네임드는 페이지당 20명입니다.", "네임드는 전체 목록을 표시합니다.");
-            if (!text.Contains("/퀴즈목록")) text += "\n/퀴즈 또는 /상식퀴즈 — 전체 문제 풀기\n/분류명퀴즈 — 해당 분류 문제 풀기 (예: /과학퀴즈, /경제퀴즈)\n/퀴즈목록 — 가능한 분류";
-            if (!text.Contains("/퀴즈등록")) text += "\n[문제 등록 · 권한 필요]\n" + Quiz.RegistrationHelp;
-            if (!text.Contains("/퀴즈삭제")) text += "\n[문제 삭제 · 권한 필요]\n" + Quiz.DeletionHelp;
-            if (!text.Contains("/퀘스트")) text += "\n/퀘스트 또는 /일퀘 — 오늘의 진행 상황·자동 지급 보상";
-            if (!text.Contains("/레벨랭킹")) text += "\n/레벨랭킹";
-            if (!text.Contains("/네임드")) text += "\n/네임드";
-            if (!text.Contains("/네임드지정")) text += "\n[운영진 전용 · 네임드]\n/네임드지정 @유저 칭호 [기간일]\n예: /네임드지정 @유저 토론왕 30일\n/네임드해제 @유저 칭호";
-            return text;
-        }
-
         public string GetAnswer(string keyword)
         {
             var keywords = commands;
@@ -641,7 +627,8 @@ namespace KakaotalkBot
             {
                 if (row[0] == keyword && row.Count > 1) 
                 {
-                    return keyword == "/?" || keyword == "/명령어" ? CompleteCommandHelp(row[1]) : row[1];
+                    // 명령어 안내도 시트 원문을 사용해 다음 콘텐츠 갱신부터 수정 내용을 반영합니다.
+                    return row[1];
                 }
             }
 

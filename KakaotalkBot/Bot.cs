@@ -486,7 +486,6 @@ namespace KakaotalkBot
                 {
                     if (string.IsNullOrEmpty(answer))
                         answer = Database.Instance.GetAnswer(command.Keyword == "/?" ? "/명령어" : "/?") ?? "[명령어 목록]";
-                    answer = AppendGovernanceHelp(answer, command.ChatId);
                     if (!answer.Contains(new string('\u200B', 500))) answer = FoldChatOutput(answer);
                 }
 
