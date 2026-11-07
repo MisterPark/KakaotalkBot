@@ -7,6 +7,15 @@ namespace KakaotalkBot
     public partial class Bot
     {
         private static readonly HashSet<string> electionCommands = new HashSet<string> { "/선거", "/대법관", "/후보", "/선거결과", "/출마", "/출마취소", "/투표", "/투표취소", "/선거설정" };
+        internal static bool IsGovernanceCommand(string message)
+        {
+            string name = OperatorCommandPolicy.Name(message);
+            return electionCommands.Contains(name) || IsModerationCommand(name);
+        }
+        private static bool IsModerationCommand(string name)
+        {
+            return name == "/내보내기" || name == "/내보내기해제" || name == "/내보낸목록";
+        }
         private void ObserveGovernance(ChatRosterSnapshot roster)
         {
             var db = Database.Instance;

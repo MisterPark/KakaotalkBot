@@ -46,7 +46,7 @@ namespace KakaotalkBot
         private bool TryModerationCommand(Command command)
         {
             string verb = OperatorCommandPolicy.Name(command.Keyword);
-            if (verb != "/내보내기" && verb != "/내보내기해제" && verb != "/내보낸목록") return false;
+            if (!IsModerationCommand(verb)) return false;
             RefreshModerationAccess();
             long session = Interlocked.Read(ref macroSession), now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             if (command.ReceivedAt <= 0 || now < command.ReceivedAt || now - command.ReceivedAt > 15 || !ModerationAllowed(command.ChatId, command.AuthorId, session))

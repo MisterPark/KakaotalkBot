@@ -336,12 +336,18 @@ namespace KakaotalkBot
             else
             {
                 ProcessQuizAnswer(chat.AuthorId, chat.Nickname, message, chat.LogId);
-                if (message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || message == "/출첵" || Quiz.IsQuizCommand(message) || OperatorCommandPolicy.Name(message) == "/퀴즈등록" || OperatorCommandPolicy.Name(message) == "/퀴즈삭제" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
-                    OperatorCommandPolicy.Name(message) == "/월간랭킹" || OperatorCommandPolicy.Name(message) == "/채팅랭킹" ||
-                    OperatorCommandPolicy.Name(message) == "/네임드" || OperatorCommandPolicy.Name(message) == "/레벨랭킹" || OperatorCommandPolicy.Name(message) == "/랭킹" || Database.Instance.Keywords.Any(k => message.StartsWith(k)))
+                if (ShouldQueueCommand(message, Database.Instance.Keywords))
                     ProcessKeyword(chat.Nickname, message, chat.AuthorId, chat.LogId, chat.ChatId, chat.Mentions);
             }
             return true;
+        }
+        // 시트에 응답 행이 없는 내장 명령도 수신 단계에서 명령 큐로 전달합니다.
+        internal static bool ShouldQueueCommand(string message, IEnumerable<string> sheetKeywords)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return false;
+            return IsGovernanceCommand(message) || message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || message == "/출첵" || Quiz.IsQuizCommand(message) || OperatorCommandPolicy.Name(message) == "/퀴즈등록" || OperatorCommandPolicy.Name(message) == "/퀴즈삭제" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
+                OperatorCommandPolicy.Name(message) == "/월간랭킹" || OperatorCommandPolicy.Name(message) == "/채팅랭킹" ||
+                OperatorCommandPolicy.Name(message) == "/네임드" || OperatorCommandPolicy.Name(message) == "/레벨랭킹" || OperatorCommandPolicy.Name(message) == "/랭킹" || sheetKeywords.Any(k => message.StartsWith(k));
         }
         private void ProcessKeyword(string nickname, string message, long authorId = 0, long logId = 0, long chatId = 0,
             IReadOnlyList<ChatMention> mentions = null)
