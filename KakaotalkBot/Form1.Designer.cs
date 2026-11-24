@@ -145,7 +145,7 @@
             this.checkBox2.Name = "checkBox2";
             this.checkBox2.Size = new System.Drawing.Size(88, 16);
             this.checkBox2.TabIndex = 13;
-            this.checkBox2.Text = "AutoReboot";
+            this.checkBox2.Text = "창 정리 (24시간)";
             this.checkBox2.UseVisualStyleBackColor = true;
             this.checkBox2.CheckedChanged += new System.EventHandler(this.checkBox2_CheckedChanged);
             // 

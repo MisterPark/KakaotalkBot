@@ -31,6 +31,7 @@ namespace KakaotalkBot
         private System.Threading.Tasks.Task<ContentRefresh> contentRefresh;
         private ContentRefresh pendingContent;
         private QuizChangeStore quizChanges;
+        private QuizNumberStore quizNumbers;
         public int PendingQuizChanges { get { return quizChanges == null ? 0 : quizChanges.Count; } }
         public string ContentRefreshError { get; private set; }
         private sealed class ContentRefresh
@@ -48,6 +49,7 @@ namespace KakaotalkBot
         {
             if (contentReader == null || contentRefresh != null) return;
             var reader = contentReader;
+            var numbers = quizNumbers;
             var quizSnapshot = quizChanges == null ? new QuizChange[0] : quizChanges.Snapshot();
             contentRefresh = System.Threading.Tasks.Task.Run(() =>
             {
@@ -55,7 +57,7 @@ namespace KakaotalkBot
                 try
                 {
                     result.Commands = reader.ReadCommandTables();
-                    result.Quizzes = reader.SynchronizeQuizzes(quizSnapshot);
+                    result.Quizzes = reader.SynchronizeQuizzes(quizSnapshot, numbers);
                     result.QuizCategories = Quiz.BuildCategoryIndex(result.Quizzes);
                     result.Topics = reader.ReadAllFromSheet("Topic").Skip(1).Select(Topic.ToTopic).ToList();
                     if (result.Topics.Count == 0) throw new InvalidOperationException("주제 갱신 결과가 비어 있어 기존 내용을 유지합니다.");
@@ -72,9 +74,10 @@ namespace KakaotalkBot
 
         internal void RegisterQuiz(Quiz quiz)
         {
-            if (quizChanges == null) throw new InvalidOperationException("문제 DB가 준비되지 않았습니다.");
-            if (commonSenses.Any(q => QuizChange.SameKey(q, quiz)))
+            if (quizChanges == null || quizNumbers == null) throw new InvalidOperationException("문제 DB가 준비되지 않았습니다.");
+            if (commonSenses.Any(q => QuizChange.SameText(q, quiz)))
                 throw new InvalidOperationException("같은 문제가 이미 등록되어 있습니다.");
+            quiz.Number = quizNumbers.Next();
             quizChanges.Stage(null, quiz);
             commonSenses.Add(QuizChange.Copy(quiz));
             quizCategories = Quiz.BuildCategoryIndex(commonSenses);
@@ -88,6 +91,18 @@ namespace KakaotalkBot
             quizChanges.Stage(matches[0], null);
             return ApplyQuizDeletion(category, question);
         }
+        internal bool DeleteQuiz(long number)
+        {
+            if (quizChanges == null) throw new InvalidOperationException("문제 DB가 준비되지 않았습니다.");
+            var matches = commonSenses.Where(q => q.Number == number && number > 0).ToArray();
+            if (matches.Length != 1) throw new InvalidOperationException(matches.Length == 0 ? "해당 고유번호의 퀴즈가 없습니다. /퀴즈목록을 확인하세요." : "퀴즈 고유번호가 중복되어 삭제하지 않았습니다.");
+            var active = GetCurrentQuiz();
+            quizChanges.Stage(matches[0], null); commonSenses.Remove(matches[0]);
+            currentAnswerIndex = active == null ? -1 : commonSenses.IndexOf(active);
+            quizCategories = Quiz.BuildCategoryIndex(commonSenses);
+            return active != null && currentAnswerIndex < 0;
+        }
+        internal List<string> GetQuizListMessages() { return Quiz.ListMessages(commonSenses); }
 
         internal bool ApplyQuizDeletion(string category, string question)
         {
@@ -224,7 +239,11 @@ namespace KakaotalkBot
             }
             catch (Exception error) { UserStorageReady = false; UserStorageError = "사용자 DB 읽기 실패: " + error.Message; throw; }
             quizChanges = new QuizChangeStore(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "QuizChanges-" + spreadsheetId + ".json"));
-            commonSenses = quizChanges.Overlay(GetCommonSenses());
+            quizNumbers = new QuizNumberStore(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "QuizNumbers-" + spreadsheetId + ".txt"));
+            foreach (var change in quizChanges.Snapshot()) quizNumbers.Observe(change.Target.Number);
+            var remoteQuizzes = GetCommonSenses();
+            quizChanges.BindNumbers(remoteQuizzes, quizNumbers);
+            commonSenses = quizChanges.Overlay(remoteQuizzes);
             quizCategories = Quiz.BuildCategoryIndex(commonSenses);
             topics = GetTopic();
         }
@@ -593,15 +612,7 @@ namespace KakaotalkBot
 
         private List<Quiz> GetCommonSenses()
         {
-            var db = keywordSheet.ReadAllFromSheet("상식퀴즈");
-            List<Quiz> users = new List<Quiz>();
-            for (int i = 0; i < db.Count; i++) 
-            {
-                if (i == 0) continue;
-                var row = db[i];
-                users.Add(Quiz.ToCommonSense(row));
-            }
-            return users;
+            return keywordSheet.SynchronizeQuizzes(new QuizChange[0], quizNumbers);
         }
 
         private List<List<string>> GetCommanads()
@@ -623,11 +634,17 @@ namespace KakaotalkBot
         public string GetAnswer(string keyword)
         {
             var keywords = commands;
+            if (keyword == "/?" || keyword == "/명령어")
+            {
+                var help = keywords.FirstOrDefault(row => row.Count > 1 && row[0] == keyword && !string.IsNullOrWhiteSpace(row[1]))
+                    ?? keywords.FirstOrDefault(row => row.Count > 1 && (row[0] == "/?" || row[0] == "/명령어") && !string.IsNullOrWhiteSpace(row[1]));
+                return CommandHelp.Compose(help == null ? null : help[1]);
+            }
             foreach (var row in keywords)
             {
                 if (row[0] == keyword && row.Count > 1) 
                 {
-                    // 명령어 안내도 시트 원문을 사용해 다음 콘텐츠 갱신부터 수정 내용을 반영합니다.
+                    // 일반 응답은 시트 원문을 사용하고 전송 단계에서만 필터링합니다.
                     return row[1];
                 }
             }

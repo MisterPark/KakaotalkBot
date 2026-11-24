@@ -24,13 +24,13 @@ namespace KakaotalkBot
         public static LocoMessagePart Text(string text)
         {
             if (text == null) throw new ArgumentNullException("text");
-            return new LocoMessagePart { Kind = "text", TextValue = text };
+            return new LocoMessagePart { Kind = "text", TextValue = ChatProfanityFilter.Mask(text) };
         }
         public static LocoMessagePart Mention(long userId, string nickname)
         {
             if (userId <= 0) throw new ArgumentOutOfRangeException("userId");
             if (string.IsNullOrWhiteSpace(nickname)) throw new ArgumentException("표시 이름이 필요합니다.", "nickname");
-            return new LocoMessagePart { Kind = "mention", UserId = userId.ToString(CultureInfo.InvariantCulture), Nickname = nickname };
+            return new LocoMessagePart { Kind = "mention", UserId = userId.ToString(CultureInfo.InvariantCulture), Nickname = ChatProfanityFilter.Mask(nickname) };
         }
     }
 

@@ -292,30 +292,40 @@ namespace KakaotalkBot
         }
 
         // 주기 작업의 스냅샷만 받습니다. 메모리의 변경 목록을 통신 스레드에서 수정하지 않습니다.
-        internal List<Quiz> SynchronizeQuizzes(QuizChange[] changes)
+        internal List<Quiz> SynchronizeQuizzes(QuizChange[] changes, QuizNumberStore numbers)
         {
             lock (lockObject)
             {
                 var rows = ReadAllFromSheet("상식퀴즈");
                 var expected = new[] { "질문", "분류", "난이도", "답", "힌트", "해설" };
-                if (rows.Count == 0 || !rows[0].Take(6).SequenceEqual(expected) || rows[0].Count > 7 || (rows[0].Count == 7 && rows[0][6] != "출제횟수"))
+                if (rows.Count == 0 || !rows[0].Take(6).SequenceEqual(expected) || rows[0].Count > 9 ||
+                    (rows[0].Count >= 7 && rows[0][6] != "출제횟수") || (rows[0].Count >= 8 && rows[0][7] != "고유번호"))
                     throw new InvalidDataException("상식퀴즈 시트의 열 구성이 바뀌었습니다.");
+                numbers.Observe(QuizNumberStore.ReadMaximum(rows[0]));
+                foreach (var change in changes) numbers.Observe(change.Target.Number);
                 var remote = rows.Skip(1).Select(Quiz.ToCommonSense).ToList();
+                var previousNumbers = remote.Select(q => q.Number).ToArray();
+                numbers.Assign(remote);
                 var merged = QuizChangeStore.Merge(remote, changes);
-                if (changes.Length == 0 && rows[0].Count == 7) return remote;
+                string maximum = QuizNumberStore.MaximumCell(numbers.Last);
+                if (changes.Length == 0 && rows[0].Count == 9 && rows[0][8] == maximum && previousNumbers.SequenceEqual(remote.Select(q => q.Number))) return remote;
                 var api = GetSheetsService();
                 var metadata = api.Spreadsheets.Get(sheetId);
                 metadata.Fields = "sheets(properties(sheetId,title,gridProperties(columnCount)))";
                 var properties = ExecuteRead(() => ExecuteBoundedRead(metadata)).Sheets.Single(s => s.Properties.Title == "상식퀴즈").Properties;
                 int tabId = properties.SheetId.Value;
                 var requests = new List<Request>();
-                if ((properties.GridProperties.ColumnCount ?? 0) < 7)
-                    requests.Add(new Request { AppendDimension = new AppendDimensionRequest { SheetId = tabId, Dimension = "COLUMNS", Length = 7 - properties.GridProperties.ColumnCount.Value } });
+                if ((properties.GridProperties.ColumnCount ?? 0) < 9)
+                    requests.Add(new Request { AppendDimension = new AppendDimensionRequest { SheetId = tabId, Dimension = "COLUMNS", Length = 9 - properties.GridProperties.ColumnCount.Value } });
                 if (rows[0].Count < 7)
                     requests.Add(QuizCountCell(tabId, 0, new ExtendedValue { StringValue = "출제횟수" }));
+                if (rows[0].Count < 8) requests.Add(QuizCell(tabId, 0, 7, new ExtendedValue { StringValue = "고유번호" }));
+                if (rows[0].Count < 9 || rows[0][8] != maximum) requests.Add(QuizCell(tabId, 0, 8, new ExtendedValue { StringValue = maximum }));
                 // 삭제로 행 번호가 이동하기 전에 횟수 셀만 수정해 시트에서 편집한 본문을 보존합니다.
                 for (int i = 0; i < remote.Count; i++)
                 {
+                    if (previousNumbers[i] != remote[i].Number)
+                        requests.Add(QuizCell(tabId, i + 1, 7, new ExtendedValue { StringValue = remote[i].Number.ToString(System.Globalization.CultureInfo.InvariantCulture) }));
                     var updated = merged.FirstOrDefault(q => QuizChange.SameKey(q, remote[i]));
                     if (updated != null && updated.AskedCount != remote[i].AskedCount)
                         requests.Add(QuizCountCell(tabId, i + 1, new ExtendedValue { StringValue = updated.AskedCount.ToString(System.Globalization.CultureInfo.InvariantCulture) }));
@@ -345,10 +355,12 @@ namespace KakaotalkBot
         }
 
         private static Request QuizCountCell(int tabId, int row, ExtendedValue value)
+        { return QuizCell(tabId, row, 6, value); }
+        private static Request QuizCell(int tabId, int row, int column, ExtendedValue value)
         {
             return new Request { UpdateCells = new UpdateCellsRequest
             {
-                Range = new GridRange { SheetId = tabId, StartRowIndex = row, EndRowIndex = row + 1, StartColumnIndex = 6, EndColumnIndex = 7 },
+                Range = new GridRange { SheetId = tabId, StartRowIndex = row, EndRowIndex = row + 1, StartColumnIndex = column, EndColumnIndex = column + 1 },
                 Fields = "userEnteredValue",
                 Rows = new List<RowData> { new RowData { Values = new List<CellData> { new CellData { UserEnteredValue = value } } } }
             } };
@@ -429,7 +441,7 @@ namespace KakaotalkBot
             {
                 var service = GetSheetsService();
                 // 문제·주제에서 실제 사용하는 열만 요청해 응답 크기를 줄입니다.
-                var range = sheetName == "상식퀴즈" ? "'상식퀴즈'!A:G" :
+                var range = sheetName == "상식퀴즈" ? "'상식퀴즈'!A:I" :
                     sheetName == "Topic" ? "'Topic'!A:D" : "'" + sheetName.Replace("'", "''") + "'";
                 var request = service.Spreadsheets.Values.Get(sheetId, range);
                 values = ExecuteRead(() => ExecuteBoundedRead(request)).Values;

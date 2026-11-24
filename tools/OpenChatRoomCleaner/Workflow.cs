@@ -10,6 +10,7 @@ namespace OpenChatRoomCleaner
     sealed class Decision
     {
         internal ActionKind Kind; internal Point Point; internal string Status;
+        internal int WheelDelta = 360;
         internal Decision(ActionKind kind,string status,Point point=default(Point)) { Kind=kind;Status=status;Point=point; }
     }
     // 다음 상태는 실제 입력이 접수된 뒤에만 반영합니다. 인식 실패는 항상 같은 단계에서 대기합니다.

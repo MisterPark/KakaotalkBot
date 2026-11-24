@@ -22,6 +22,7 @@ namespace KakaotalkBot
         public string Kind { get; internal set; }
         public string SourcePath { get { return Path.Combine(AccountPath, "chat_data", "chatLogs_" + ChatId + ".edb"); } }
         public bool IsDirect { get { return Kind == "DirectChat" || Kind == "OD"; } }
+        public bool IsPersonalDirect { get { return Kind == "DirectChat" && LinkId == 0 && DirectUserId > 0; } }
         public bool IsOpenGroup { get { return LinkId > 0 && !IsDirect; } }
         public string Identity { get { return AccountPath + ":" + ChatId; } }
     }
@@ -35,6 +36,9 @@ namespace KakaotalkBot
         public string Nickname, Message, EventCommand;
         public bool IsDirect;
         public bool IsOwn;
+        public bool IsHistory;
+        public bool IsUnsupported;
+        public string EmoticonId;
         public bool RoleChanged;
         public int ExpectedMemberType;
         public ChatRoomEvent RoomEvent;
@@ -52,7 +56,7 @@ namespace KakaotalkBot
     internal sealed class ChatRosterSnapshot
     {
         public long ChatId, LogId, ObservedAt;
-        public long LinkId;
+        public long LinkId, OwnAuthorId;
         public bool IsOpenGroup;
         public readonly List<ChatMemberState> Members = new List<ChatMemberState>();
         public static ChatRosterSnapshot Read(string path, ChatRoomInfo room, ChatUserDirectory users)
@@ -62,11 +66,31 @@ namespace KakaotalkBot
             using (var db = new ChatSqlite(path))
             {
                 result.LogId = db.Scalar("SELECT COALESCE(lastLogId,0) FROM chatRoomList WHERE chatId=?", room.ChatId);
-                foreach (var row in db.Query("SELECT userId,isActive FROM chatMembers WHERE chatId=? AND userId>0 AND isActive IN (0,1)", room.ChatId))
-                    result.Members.Add(new ChatMemberState { UserId = ChatCatalog.Number(row[0]), IsPresent = ChatCatalog.Number(row[1]) == 1,
-                        Nickname = users.Find(ChatCatalog.Number(row[0]), room.LinkId),
-                        MemberType = users.MemberType(ChatCatalog.Number(row[0]), room.LinkId),
-                        MemberPrivilege = users.MemberPrivilege(ChatCatalog.Number(row[0]), room.LinkId) });
+                var rows = db.Query("SELECT userId,isActive FROM chatMembers WHERE chatId=? AND userId>=0 AND isActive IN (0,1)", room.ChatId);
+                long own = users.OwnAuthorForRoom(room.ChatId);
+                if (own == 0)
+                {
+                    var candidates = rows.Where(r => ChatCatalog.Number(r[1]) == 1 && ChatCatalog.Number(r[0]) > 0 && users.OwnIds.Contains(ChatCatalog.Number(r[0])))
+                        .Select(r => ChatCatalog.Number(r[0])).Distinct().ToArray();
+                    if (candidates.Length == 1) own = candidates[0];
+                }
+                bool explicitOwnRow = own > 0 && rows.Any(r => ChatCatalog.Number(r[0]) == own);
+                foreach (var row in rows)
+                {
+                    long profile = ChatCatalog.Number(row[0]), id = profile;
+                    // 일부 버전은 본인의 방 프로필/참여자만 ID 0으로 보관합니다.
+                    // 해당 방의 PC 발신 기록 또는 명시한 본인 ID로 확인된 경우에만 실제 ID로 연결합니다.
+                    if (id == 0)
+                    {
+                        if (own <= 0 || users.OwnAuthorForRoom(room.ChatId) != own || explicitOwnRow) continue;
+                        id = own;
+                    }
+                    bool present = ChatCatalog.Number(row[1]) == 1;
+                    result.Members.Add(new ChatMemberState { UserId = id, IsPresent = present,
+                        Nickname = users.Find(profile, room.LinkId), MemberType = users.MemberType(profile, room.LinkId),
+                        MemberPrivilege = users.MemberPrivilege(profile, room.LinkId) });
+                    if (present && id == own) result.OwnAuthorId = own;
+                }
             }
             return result;
         }
@@ -171,6 +195,17 @@ namespace KakaotalkBot
         private readonly Dictionary<string, int> roles = new Dictionary<string, int>();
         private readonly Dictionary<string, string> privileges = new Dictionary<string, string>();
         public readonly HashSet<long> OwnIds = new HashSet<long>();
+        private readonly Dictionary<long, HashSet<long>> ownByRoom = new Dictionary<long, HashSet<long>>();
+        internal void ObserveOwnAuthor(long chat, long author)
+        {
+            if (chat <= 0 || author <= 0) return;
+            OwnIds.Add(author);
+            HashSet<long> ids;
+            if (!ownByRoom.TryGetValue(chat, out ids)) ownByRoom.Add(chat, ids = new HashSet<long>());
+            ids.Add(author);
+        }
+        internal long OwnAuthorForRoom(long chat)
+        { HashSet<long> ids; return ownByRoom.TryGetValue(chat, out ids) && ids.Count == 1 ? ids.First() : 0; }
 
         public void Load(string usersPath, string roomsPath)
         {
@@ -283,12 +318,35 @@ namespace KakaotalkBot
 
     internal static class ChatMessageDecoder
     {
+        internal static string EmoticonIdentity(long type, string attachment)
+        {
+            if (type != 12 && type != 20 && type != 25) return null;
+            try
+            {
+                var value = JObject.Parse(attachment ?? "");
+                string path = value["path"] != null && value["path"].Type == JTokenType.String ? (string)value["path"] : null;
+                if (string.IsNullOrEmpty(path)) return null;
+                var match = System.Text.RegularExpressions.Regex.Match(path, @"(?:^|/)([0-9]{1,16})\.(?:emot|thum)_([0-9]{3})\.(?:png|webp|gif)$");
+                int index;
+                return match.Success && int.TryParse(match.Groups[2].Value, out index) && index > 0 ? match.Groups[1].Value + ":" + index : null;
+            }
+            catch (Newtonsoft.Json.JsonException) { return null; }
+        }
+        internal static ChatMessage PersonalMedia(ChatRoomInfo room, object[] row, ChatUserDirectory users)
+        {
+            long author = ChatCatalog.Number(row[1]), type = ChatCatalog.Number(row[2]);
+            if (type == 0 || type == 1 || type == 26 || ChatCatalog.Number(row[5]) != 0 || author != room.DirectUserId && !users.OwnIds.Contains(author)) return null;
+            string emoticon = EmoticonIdentity(type, Convert.ToString(row[7]));
+            return new ChatMessage { ChatId = room.ChatId, LogId = ChatCatalog.Number(row[0]), AuthorId = author,
+                SendAt = ChatCatalog.Number(row[3]), IsDirect = true, IsOwn = users.OwnIds.Contains(author), IsUnsupported = emoticon == null,
+                EmoticonId = emoticon, Message = emoticon == null ? null : "[카카오톡 이모티콘 " + emoticon + "]" };
+        }
         public static List<ChatMessage> Decode(ChatRoomInfo room, object[] row, ChatUserDirectory users, bool direct)
         {
             var result = new List<ChatMessage>();
             long author = ChatCatalog.Number(row[1]);
             int type = (int)ChatCatalog.Number(row[2]);
-            if (author > 0 && (type == 1 || type == 26) && ChatCatalog.Number(row[6]) != 0) users.OwnIds.Add(author);
+            if (author > 0 && (type == 1 || type == 26) && ChatCatalog.Number(row[6]) != 0) users.ObserveOwnAuthor(room.ChatId, author);
             if (ChatCatalog.Number(row[5]) != 0) return result;
             if (type == 1 || type == 26)
             {
@@ -428,6 +486,11 @@ namespace KakaotalkBot
         private readonly KakaoTalkDecryptor decryptor = new KakaoTalkDecryptor();
         private readonly ChatUserDirectory users = new ChatUserDirectory();
         private readonly long ownId;
+        private readonly ChatRoomInfo[] personalRooms;
+        private readonly bool importPersonalHistory;
+        private readonly long personalStartedAt;
+        private ChatRoomInfo[] verifiedPersonalRooms = new ChatRoomInfo[0];
+        private long personalVerifiedAt;
         private Task worker;
         private int disposed;
         private volatile string status = "준비 중";
@@ -435,6 +498,27 @@ namespace KakaotalkBot
         public Task Completion { get { return worker ?? Task.FromResult(0); } }
 
         public ChatDatabaseReceiver(ChatRoomInfo room, long ownId = 0) { target = room; this.ownId = ownId; }
+        internal ChatDatabaseReceiver(ChatRoomInfo[] rooms, bool importHistory)
+        {
+            if (rooms == null || rooms.Length == 0 || rooms.Length > 10 || rooms.Any(r => !r.IsPersonalDirect) ||
+                rooms.Select(r => r.Identity).Distinct().Count() != rooms.Length || rooms.Any(r => r.AccountPath != rooms[0].AccountPath || r.ProcessId != rooms[0].ProcessId))
+                throw new ArgumentException("같은 계정의 일반 1:1 대화를 1~10개 선택하세요.");
+            personalRooms = (ChatRoomInfo[])rooms.Clone(); target = rooms[0]; importPersonalHistory = importHistory;
+            personalStartedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        }
+        internal static bool MatchesPersonalRoom(ChatRoomInfo expected, IEnumerable<ChatRoomInfo> catalog)
+        {
+            var current = catalog.Where(r => r.AccountPath == expected.AccountPath && r.ChatId == expected.ChatId).ToArray();
+            return current.Length == 1 && current[0].IsPersonalDirect && current[0].DirectUserId == expected.DirectUserId &&
+                current[0].ProcessId == expected.ProcessId && current[0].Name == expected.Name &&
+                catalog.Count(r => r.AccountPath == expected.AccountPath && r.Name == expected.Name) == 1;
+        }
+        internal bool CanSendPersonal(ChatRoomInfo room)
+        {
+            return Volatile.Read(ref disposed) == 0 && !Completion.IsCompleted && messages.Count == 0 &&
+                DateTime.UtcNow.Ticks - Interlocked.Read(ref personalVerifiedAt) <= TimeSpan.FromSeconds(10).Ticks &&
+                Volatile.Read(ref verifiedPersonalRooms).Any(r => r.Identity == room.Identity && r.DirectUserId == room.DirectUserId && r.Name == room.Name);
+        }
         public void Start() { if (worker == null) worker = Task.Run((Action)Run); }
         public bool TryRead(out ChatMessage message) { return messages.TryTake(out message); }
         public void WatchDirect(long authorId)
@@ -463,7 +547,7 @@ namespace KakaotalkBot
                 Directory.CreateDirectory(output);
                 using (var lease = new FileStream(Path.Combine(output, "receiver.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
                 {
-                    if (ownId > 0) users.OwnIds.Add(ownId);
+                    if (ownId > 0) users.ObserveOwnAuthor(target.ChatId, ownId);
                     while (!cancellation.IsCancellationRequested)
                     {
                         try
@@ -474,6 +558,7 @@ namespace KakaotalkBot
                             string listSource = Path.Combine(target.AccountPath, "chat_data", "chatListInfo.edb");
                             string userSource = Path.Combine(target.AccountPath, "TalkUserDB.edb");
                             var paths = new List<string> { listSource, userSource, target.SourcePath };
+                            if (personalRooms != null) paths.AddRange(personalRooms.Select(r => r.SourcePath));
                             var directRooms = new Dictionary<long, DirectRequest>();
                             foreach (var watch in direct.Values)
                             {
@@ -498,7 +583,8 @@ namespace KakaotalkBot
                                             if (sessions.TryGetValue(pair.Key, out previous) && previous.Key != null) { pair.Value.Dispose(); continue; }
                                             var replacement = new Session(pair.Value, new ChatDatabaseSnapshot(pair.Key,
                                                 Path.Combine(output, Path.GetFileNameWithoutExtension(pair.Key) + ".sqlite"), decryptor, pair.Value));
-                                            if (previous != null) { replacement.Cursor = previous.Cursor; replacement.Since = previous.Since; }
+                                            if (personalRooms != null) replacement.Cursor = new ChatLogCursor(personalStartedAt);
+                                            if (previous != null) { replacement.Cursor = previous.Cursor; replacement.Since = previous.Since; replacement.HistorySent = previous.HistorySent; }
                                             sessions[pair.Key] = replacement;
                                         }
                                         missing.RemoveAll(d => sessions.ContainsKey(d.SourcePath) && sessions[d.SourcePath].Key != null);
@@ -517,8 +603,14 @@ namespace KakaotalkBot
                                 { status = "계정 DB 갱신 중 · 다음 수신 주기에 재시도"; cancellation.Token.WaitHandle.WaitOne(200); continue; }
                                 users.Load(user.Snapshot.OutputPath, list.Snapshot.OutputPath);
                                 rooms = ChatCatalog.ReadRooms(list.Snapshot.OutputPath, target.AccountPath, target.ProcessId, users);
-                                messages.Add(new ChatMessage { ChatId = target.ChatId,
-                                    Roster = ChatRosterSnapshot.Read(list.Snapshot.OutputPath, target, users) }, cancellation.Token);
+                                if (personalRooms == null)
+                                    messages.Add(new ChatMessage { ChatId = target.ChatId,
+                                        Roster = ChatRosterSnapshot.Read(list.Snapshot.OutputPath, target, users) }, cancellation.Token);
+                                else
+                                {
+                                    Volatile.Write(ref verifiedPersonalRooms, personalRooms.Where(r => MatchesPersonalRoom(r, rooms)).ToArray());
+                                    Interlocked.Exchange(ref personalVerifiedAt, DateTime.UtcNow.Ticks);
+                                }
                                 nextMetadata = DateTime.UtcNow.AddSeconds(5);
                             }
                             Session main;
@@ -527,6 +619,16 @@ namespace KakaotalkBot
                             if (main.Snapshot.RefreshDeferred)
                             { status = "채팅 DB 갱신 중 · 다음 수신 주기에 재시도"; cancellation.Token.WaitHandle.WaitOne(200); continue; }
                             string directStatus = "";
+                            if (personalRooms != null)
+                            {
+                                foreach (var room in personalRooms.Where(r => r.ChatId != target.ChatId))
+                                {
+                                    Session personal;
+                                    if (sessions.TryGetValue(room.SourcePath, out personal) && personal.Key != null) Pump(personal, room, null);
+                                    else directStatus = " · 선택한 1:1 채팅창을 한 번 열어 주세요";
+                                }
+                                if (verifiedPersonalRooms.Length != personalRooms.Length) directStatus = " · 이름/참여자가 바뀌거나 이름이 중복된 방은 전송 보류";
+                            }
                             foreach (var pair in directRooms)
                             {
                                 var room = rooms.First(r => r.ChatId == pair.Key);
@@ -578,14 +680,47 @@ namespace KakaotalkBot
             if (!session.OwnChecked)
             {
                 using (var db = new ChatSqlite(session.Snapshot.OutputPath))
-                    foreach (var row in db.Query("SELECT DISTINCT authorId FROM chatLogs WHERE write_on_pc=1 AND authorId>0 AND type IN (1,26) LIMIT 16")) users.OwnIds.Add(ChatCatalog.Number(row[0]));
-                session.OwnChecked = users.OwnIds.Count > 0;
+                    foreach (var row in db.Query("SELECT DISTINCT authorId FROM chatLogs WHERE write_on_pc=1 AND authorId>0 AND type IN (1,26) LIMIT 16")) users.ObserveOwnAuthor(room.ChatId, ChatCatalog.Number(row[0]));
+                session.OwnChecked = users.OwnIds.Any(id => id > 0);
             }
-            if (users.OwnIds.Count == 0) throw new IOException("본인 작성자 ID를 확인하지 못했습니다. '나와의 채팅'을 열고 다시 시도하거나 본인 ID를 입력해 주세요.");
-            foreach (object[] row in session.Cursor.Read(session.Snapshot.OutputPath))
+            if (!users.OwnIds.Any(id => id > 0)) throw new IOException(personalRooms == null
+                ? "본인 작성자 ID를 확인하지 못했습니다. '나와의 채팅'을 열고 다시 시도하거나 본인 ID를 입력해 주세요."
+                : "본인 계정을 확인하지 못했습니다. '나와의 채팅'을 열거나 선택한 상대에게 PC 카카오톡에서 직접 답장한 뒤 다시 시작하세요.");
+            var incoming = session.Cursor.Read(session.Snapshot.OutputPath);
+            if (personalRooms != null && !session.HistorySent)
             {
+                if (importPersonalHistory)
+                using (var db = new ChatSqlite(session.Snapshot.OutputPath))
+                {
+                    var history = db.Query("SELECT logId,authorId,type,sendAt,message,COALESCE(deleted,0),COALESCE(write_on_pc,0),attachement FROM chatLogs WHERE COALESCE(deleted,0)=0 AND sendAt<? ORDER BY logId DESC LIMIT 1000", personalStartedAt);
+                    history.Reverse();
+                    foreach (var row in history)
+                    {
+                        var decoded = ChatMessageDecoder.Decode(room, row, users, false);
+                        var media = ChatMessageDecoder.PersonalMedia(room, row, users); if (media != null) decoded.Add(media);
+                        foreach (var message in decoded)
+                        {
+                            if (message.RoomEvent != ChatRoomEvent.None || message.RoleChanged || !message.IsOwn && message.AuthorId != room.DirectUserId) continue;
+                            message.IsHistory = true; message.IsDirect = true; messages.Add(message, cancellation.Token);
+                        }
+                    }
+                }
+                session.HistorySent = true;
+            }
+            foreach (object[] row in incoming)
+            {
+                if (personalRooms != null)
+                {
+                    var media = ChatMessageDecoder.PersonalMedia(room, row, users);
+                    if (media != null) messages.Add(media, cancellation.Token);
+                }
                 foreach (ChatMessage message in ChatMessageDecoder.Decode(room, row, users, watch != null))
                 {
+                    if (personalRooms != null)
+                    {
+                        if (message.RoomEvent != ChatRoomEvent.None || message.RoleChanged || !message.IsOwn && message.AuthorId != room.DirectUserId) continue;
+                        message.IsDirect = true;
+                    }
                     if (watch != null)
                     {
                         if (message.AuthorId != room.DirectUserId || message.AuthorId != watch.AuthorId) continue;
@@ -613,6 +748,7 @@ namespace KakaotalkBot
             public ChatLogCursor Cursor = new ChatLogCursor();
             public long Since;
             public bool OwnChecked;
+            public bool HistorySent;
             public Session(KakaoTalkDecryptor.DecryptionKey key, ChatDatabaseSnapshot snapshot) { Key = key; Snapshot = snapshot; }
             public void Dispose() { if (Key != null) Key.Dispose(); }
         }

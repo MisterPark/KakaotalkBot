@@ -391,12 +391,17 @@ namespace KakaotalkBot
             string error;
             bool completed = StaInputWorker.Instance.TryInvoke(() =>
             {
+                // 닫기 전에 검색 UI를 끝까지 준비합니다. 이 단계가 실패하면 열린 방을 보존합니다.
+                IntPtr search;
+                IntPtr main = PrepareChatRoomSearch(roomName, expectedPid, out search);
                 if (IsChatRoomOpen(roomName))
                 {
                     IntPtr input = KakaoInputMentions.EmptyInputWindow(roomName, expectedPid);
                     if (input == IntPtr.Zero) return DeferRecycle("작성 중인 내용이 있어 재열기를 보류했습니다.");
                     IntPtr room = GetAncestor(input, 2);
                     if (room == IntPtr.Zero) return DeferRecycle("채팅창을 확인하지 못했습니다.");
+                    RequireSearchForeground(main);
+                    ChatRoomSearch.RequireQuery(main, search, roomName);
                     CloseWindow(room);
                     var closing = Stopwatch.StartNew();
                     while (IsWindow(room))
@@ -405,13 +410,8 @@ namespace KakaotalkBot
                         Thread.Sleep(50);
                     }
                 }
-                OpenChatRoom(roomName);
-                var opening = Stopwatch.StartNew();
-                while (!IsChatRoomOpen(roomName))
-                {
-                    if (opening.ElapsedMilliseconds >= 3000) return DeferRecycle("채팅창 재열기 시간 초과");
-                    Thread.Sleep(50);
-                }
+                ActivateSearchMain(main);
+                SubmitChatRoomSearch(roomName, expectedPid, main, search);
                 // 이름이 같은 다른 계정 창으로 연결되지 않았는지도 다시 검사합니다.
                 KakaoInputMentions.EmptyInputWindow(roomName, expectedPid);
                 return true;
@@ -421,10 +421,32 @@ namespace KakaotalkBot
         }
 
         private DateTime nextKakaoLaunch;
+        private string lastSearchRoom;
+        private int lastSearchPid;
+        private DateTime nextSearchAttempt;
 
-        public void OpenChatRoom(string roomName)
+        public void OpenChatRoom(string roomName, int expectedPid = 0)
         {
-            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => OpenChatRoom(roomName)); return; }
+            if (!StaInputWorker.Instance.IsCurrent) { StaInputWorker.Instance.Invoke(() => OpenChatRoom(roomName, expectedPid)); return; }
+            // 대기 중이던 열기 작업도 실행 시점에 다시 확인하여 이미 열린 방을 검색하지 않습니다.
+            if (IsChatRoomOpen(roomName)) return;
+            if (lastSearchRoom == roomName && lastSearchPid == expectedPid && DateTime.UtcNow < nextSearchAttempt)
+                throw new InvalidOperationException("채팅방 검색 재시도 대기 중입니다. 잠시 후 다시 시도합니다.");
+            lastSearchRoom = roomName; lastSearchPid = expectedPid;
+            try { OpenChatRoomCore(roomName, expectedPid); nextSearchAttempt = DateTime.MinValue; }
+            catch { nextSearchAttempt = DateTime.UtcNow.AddMinutes(2); throw; }
+        }
+
+        private void OpenChatRoomCore(string roomName, int expectedPid)
+        {
+            IntPtr search;
+            IntPtr main = PrepareChatRoomSearch(roomName, expectedPid, out search);
+            if (IsChatRoomOpen(roomName)) return;
+            SubmitChatRoomSearch(roomName, expectedPid, main, search);
+        }
+
+        private IntPtr PrepareChatRoomSearch(string roomName, int expectedPid, out IntPtr search)
+        {
             // 실행·로그인 대기를 STA 안에서 하지 않습니다. 봇의 다음 열기 시도에서 다시 확인합니다.
             IntPtr hwndKakao = FindWindow(null, "카카오톡");
             if (hwndKakao == IntPtr.Zero)
@@ -437,39 +459,46 @@ namespace KakaotalkBot
                 throw new InvalidOperationException("카카오톡 실행·로그인 대기 중입니다. 다음 주기에 다시 확인합니다.");
             }
 
-            Point p = GetWindowPos(hwndKakao);
-            SetCursorPos(p.X + 32, p.Y + 120);
-            ClickLeft();
-            Thread.Sleep(1000);
-
-            // 2. 검색 Edit 컨트롤 찾아 들어가기
-            IntPtr hwndEdit1 = FindWindowEx(hwndKakao, IntPtr.Zero, "EVA_ChildWindow", null);
-            IntPtr hwndEdit2_1 = FindWindowEx(hwndEdit1, IntPtr.Zero, "EVA_Window", null);
-            IntPtr hwndEdit2_2 = FindWindowEx(hwndEdit1, hwndEdit2_1, "EVA_Window", null);
-            IntPtr hwndEdit3 = FindWindowEx(hwndEdit2_2, IntPtr.Zero, "Edit", null); // 최종 Edit 컨트롤
-
-            if (hwndEdit3 == IntPtr.Zero) return;
-
-            SetForegroundWindow(hwndEdit3);
-            Thread.Sleep(50);
-            // TODO: 글자 수만큼 해야함.
-            Press(VK_BACK);
-            Thread.Sleep(100);
-            Press(VK_BACK);
-            Thread.Sleep(100);
-            Press(VK_BACK);
-
-            SendText(roomName);
-            Thread.Sleep(1000);
-
-            SetCursorPos(p.X + 195, p.Y + 120);
-            ClickLeft();
-            Thread.Sleep(50);
-            ClickLeft();
-
-            var opened = Stopwatch.StartNew();
-            while (!IsChatRoomOpen(roomName) && opened.ElapsedMilliseconds < 1000) Thread.Sleep(50);
+            uint kakaoPid;
+            GetWindowThreadProcessId(hwndKakao, out kakaoPid);
+            if (expectedPid > 0 && kakaoPid != (uint)expectedPid)
+                throw new InvalidOperationException("선택한 계정의 카카오톡 메인 창이 아닙니다.");
+            ActivateSearchMain(hwndKakao);
+            search = ChatRoomSearch.OpenSearch(hwndKakao);
+            RequireSearchForeground(hwndKakao);
+            ChatRoomSearch.ReplaceQuery(hwndKakao, search, roomName);
+            ChatRoomSearch.WaitForResults(hwndKakao, search, roomName);
+            return hwndKakao;
         }
+
+        private void SubmitChatRoomSearch(string roomName, int expectedPid, IntPtr main, IntPtr search)
+        {
+            RequireSearchForeground(main);
+            ChatRoomSearch.Submit(main, search, roomName);
+            var opened = Stopwatch.StartNew();
+            while (!IsChatRoomOpen(roomName) && opened.ElapsedMilliseconds < 5000) Thread.Sleep(50);
+            if (!IsChatRoomOpen(roomName)) throw new InvalidOperationException("검색어는 입력했지만 해당 채팅방을 열지 못했습니다. 다음 시도에서 검색어를 다시 교체합니다.");
+            KakaoInputMentions.EmptyInputWindow(roomName, expectedPid);
+        }
+
+        private static void ActivateSearchMain(IntPtr main)
+        {
+            if (IsIconic(main) || !IsWindowVisible(main)) ShowWindow(main, 9);
+            SetForegroundWindow(main);
+            var activating = Stopwatch.StartNew();
+            while (GetForegroundWindow() != main && activating.ElapsedMilliseconds < 1500) Thread.Sleep(50);
+            RequireSearchForeground(main);
+        }
+
+        private static void RequireSearchForeground(IntPtr main)
+        {
+            if (!IsWindow(main) || GetForegroundWindow() != main)
+                throw new InvalidOperationException("카카오톡 메인 창이 활성 상태가 아니어서 채팅방 검색을 중단했습니다.");
+        }
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
+        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
 
         public void CloseWindow(string windowName)
         {
@@ -543,21 +572,21 @@ namespace KakaotalkBot
 
         internal void SendOperatorNotice(string room, int pid, string text)
         {
-            string body = Database.Instance.ForChat(text);
+            string body = Bot.FormatChatOutput(Database.Instance.ForChat(text));
             RunChatSend(() => new NativeMentionInput(room, pid).SendPlain(body));
         }
 
         /// <summary>닉네임으로 개인 멘션 객체를 만들고 ID로 대상을 지정하여 본문과 한 번에 전송한다.</summary>
         public void SendMentionToChatroom(string chatroomName, long userId, string candidateNickname, string message, int expectedProcessId = 0, IEnumerable<string> fallbackNicknames = null)
         {
-            string body = Database.Instance.ForChat(message);
+            string body = Bot.FormatChatOutput(Database.Instance.ForChat(message));
             var candidates = fallbackNicknames == null ? null : new List<string>(fallbackNicknames);
             RunChatSend(() => new KakaoMentionSender(chatroomName, expectedProcessId).Send(userId, candidateNickname, body, candidates));
         }
 
         public void SendTextToChatroom(string chatroomName, string message)
         {
-            message = Database.Instance.ForChat(message);
+            message = Bot.FormatChatOutput(Database.Instance.ForChat(message));
             RunChatSend(() =>
             {
                 IntPtr hwndMain = FindWindow(null, chatroomName);

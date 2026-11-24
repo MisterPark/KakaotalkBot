@@ -99,6 +99,14 @@ namespace OpenChatRoomCleaner
             for(int i=0;i<16 && h!=IntPtr.Zero;i++,h=GetWindow(h,4)) if(h==room)return true;
             return false;
         }
+        internal static bool IsExposed(Window window, Rectangle relativeBounds)
+        {
+            if(relativeBounds.Width<1 || relativeBounds.Height<1)return false;
+            Rect current;
+            if(!GetWindowRect(window.Handle,out current) || Rectangle.FromLTRB(current.L,current.T,current.R,current.B)!=window.Bounds)return false;
+            var point=new Point(window.Bounds.Left+relativeBounds.Left+relativeBounds.Width/2,window.Bounds.Top+relativeBounds.Top+relativeBounds.Height/2);
+            return window.Bounds.Contains(point) && GetAncestor(WindowFromPoint(point),2)==GetAncestor(window.Handle,2);
+        }
         internal static bool IsForegroundProcess(uint pid) { uint actual;GetWindowThreadProcessId(GetForegroundWindow(),out actual);return actual==pid; }
         internal static Frame Capture(IntPtr h)
         {
@@ -113,6 +121,7 @@ namespace OpenChatRoomCleaner
         internal static bool Apply(Frame f,Decision d,Func<bool> cancelled,bool allowRemoval=false)
         {
             if(cancelled() || (d.Kind==ActionKind.ConfirmRemoval && !allowRemoval))return false;
+            if((d.Kind==ActionKind.ScrollUp || d.Kind==ActionKind.ScrollDown) && (d.WheelDelta<120 || d.WheelDelta>1200 || d.WheelDelta%120!=0))return false;
             Rect current; if(!GetWindowRect(f.Handle,out current) || new Rectangle(current.L,current.T,current.R-current.L,current.B-current.T)!=f.Bounds)return false;
             var p=new Point(f.Bounds.Left+d.Point.X,f.Bounds.Top+d.Point.Y);
             if(d.Kind==ActionKind.Escape)
@@ -123,7 +132,7 @@ namespace OpenChatRoomCleaner
             if(!f.Bounds.Contains(p)||GetAncestor(WindowFromPoint(p),2)!=GetAncestor(f.Handle,2))return false;
             if(cancelled()||!SetCursorPos(p.X,p.Y))return false;
             if(d.Kind==ActionKind.Click || d.Kind==ActionKind.ConfirmRemoval) {mouse_event(2,0,0,0,UIntPtr.Zero);mouse_event(4,0,0,0,UIntPtr.Zero);}
-            else if(d.Kind==ActionKind.ScrollUp || d.Kind==ActionKind.ScrollDown)mouse_event(0x0800,0,0,d.Kind==ActionKind.ScrollUp?360:-360,UIntPtr.Zero);
+            else if(d.Kind==ActionKind.ScrollUp || d.Kind==ActionKind.ScrollDown)mouse_event(0x0800,0,0,d.Kind==ActionKind.ScrollUp?d.WheelDelta:-d.WheelDelta,UIntPtr.Zero);
             else return false;
             return true;
         }

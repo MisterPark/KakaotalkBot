@@ -58,6 +58,7 @@ namespace KakaotalkBot
         private Label databaseStatus;
         private bool closing, closeReady;
         private string databaseError;
+        private PersonalReplyPanel personalReplies;
 
         public Form1(Bot bot, VoiceRoomBot voiceRoomBot)
         {
@@ -69,6 +70,9 @@ namespace KakaotalkBot
             InitializeDatabaseControls();
             InitializeQuizModeControls();
             InitializeOperationsControls();
+            var personalPage = new TabPage("개인 AI");
+            personalReplies = new PersonalReplyPanel(() => !closing && !bot.IsBotRunning && !bot.IsReceiverStopping && catalogTask == null, RefreshRoomCatalog);
+            personalPage.Controls.Add(personalReplies); tabControl1.TabPages.Add(personalPage);
 
             timer = new System.Windows.Forms.Timer();
             timer.Interval = 100;
@@ -94,6 +98,7 @@ namespace KakaotalkBot
 
         private void Timer_Tick(object sender, EventArgs e)
         {
+            personalReplies.Pulse();
             TickOperations();
             if (catalogTask != null && catalogTask.IsCompleted)
             {
@@ -103,6 +108,7 @@ namespace KakaotalkBot
                 else if (!completed.IsCanceled)
                 {
                     catalog = completed.Result;
+                    personalReplies.SetCatalog(catalog);
                     accountSelector.Items.Clear();
                     accountSelector.Items.Add("모든 계정");
                     foreach (string account in catalog.Rooms.Select(r => r.AccountPath).Distinct()) accountSelector.Items.Add(Path.GetFileName(account));
@@ -116,10 +122,10 @@ namespace KakaotalkBot
                     }
                 }
             }
-            bool available = !closing && !bot.IsBotRunning && !bot.IsReceiverStopping && catalogTask == null;
+            bool available = !closing && !personalReplies.Busy && !bot.IsBotRunning && !bot.IsReceiverStopping && catalogTask == null;
             listView1.Enabled = accountSelector.Enabled = roomSearch.Enabled = ownIdInput.Enabled = textBox1.Enabled = available;
             button3.Enabled = available;
-            button2.Enabled = !bot.IsReceiverStopping && catalogTask == null && bot.SelectedRoom != null;
+            button2.Enabled = !personalReplies.Busy && !bot.IsReceiverStopping && catalogTask == null && bot.SelectedRoom != null;
             button2.Text = bot.IsBotRunning ? "DB 수신 중지" : bot.IsReceiverStopping ? "수신 종료 중…" : "DB 수신 시작";
             if (bot.HasReceiver && catalogTask == null) databaseStatus.Text = bot.ReceiveStatus;
             if (ScreenPixelDetector.Instance.LastError != null) databaseStatus.Text = ScreenPixelDetector.Instance.LastError;
@@ -174,6 +180,7 @@ namespace KakaotalkBot
 
         private void OnApplicationExit(object sender, EventArgs e)
         {
+            var personalStop = personalReplies.Stop(); // 정상 종료에서는 FormClosing에서 이미 완료를 기다립니다.
             catalogCancellation.Cancel();
             bot.Stop();
             Program.ShutdownFlag = true;
@@ -260,7 +267,7 @@ namespace KakaotalkBot
 
         private void RefreshRoomCatalog()
         {
-            if (catalogTask != null || bot.IsBotRunning || bot.IsReceiverStopping) return;
+            if (catalogTask != null || personalReplies.Busy || bot.IsBotRunning || bot.IsReceiverStopping) return;
             databaseError = null;
             bot.SelectRoom(null);
             textBox1.Clear();
@@ -352,6 +359,7 @@ namespace KakaotalkBot
                 closing = true;
                 timer.Stop();
                 Enabled = false;
+                await personalReplies.Stop();
                 bot.Stop();
                 if (bot.HasPendingUserSave)
                 {
@@ -387,6 +395,7 @@ namespace KakaotalkBot
             try
             {
                 if (bot.IsBotRunning) { bot.Stop(); return; }
+                if (personalReplies.Busy) throw new InvalidOperationException("개인 AI를 중지한 뒤 기존 채팅 봇을 시작하세요.");
                 long ownId = 0;
                 if (!string.IsNullOrWhiteSpace(ownIdInput.Text) && (!long.TryParse(ownIdInput.Text, out ownId) || ownId <= 0))
                     throw new InvalidOperationException("본인 작성자 ID는 양의 정수로 입력하거나 비워 주세요.");

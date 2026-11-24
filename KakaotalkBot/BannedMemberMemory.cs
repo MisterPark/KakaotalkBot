@@ -18,15 +18,23 @@ namespace KakaotalkBot
     internal sealed class BannedMemberMemory : IDisposable
     {
         private readonly IntPtr process;
+        private readonly Func<ulong, int, byte[]> readMemory;
+        private readonly Func<IntPtr, string, IntPtr> windowProperty;
+        // 현재 목록 컨트롤에서 관측한 항목 트리. 0명은 순간 상태이며 로딩 완료를 뜻하지 않습니다.
+        private const ulong MemberTreeOffset = 0x368;
         internal BannedMemberMemory(int pid)
         {
             process = OpenProcess(0x410, false, pid);
             if (process == IntPtr.Zero) throw new InvalidOperationException("해제 목록 메모리를 읽을 수 없습니다.");
+            windowProperty = GetProp;
         }
-        public void Dispose() { CloseHandle(process); }
+        internal BannedMemberMemory(Func<ulong, int, byte[]> readMemory, Func<IntPtr, string, IntPtr> windowProperty)
+        { this.readMemory = readMemory; this.windowProperty = windowProperty; }
+        public void Dispose() { if (process != IntPtr.Zero) CloseHandle(process); }
         private byte[] Read(ulong address, int length)
         {
             if (address < 0x10000 || address > 0x7FFFFFFFFFFF || length < 1 || length > 65536) return null;
+            if (readMemory != null) return readMemory(address, length);
             var bytes = new byte[length]; UIntPtr read;
             return ReadProcessMemory(process, (IntPtr)(long)address, bytes, (UIntPtr)length, out read) && read.ToUInt64() == (ulong)length ? bytes : null;
         }
@@ -46,15 +54,22 @@ namespace KakaotalkBot
             return Encoding.ASCII.GetString(name, 0, end >= 0 ? end : name.Length);
         }
         private bool Is(ulong address, string name) { ulong ignored; return Type(address, out ignored) == name; }
-        internal List<BannedMember> ReadList(IntPtr window, long expectedLink)
+        private ulong Dialog(IntPtr window)
         {
-            ulong layout = (ulong)GetProp(window, "_LayoutManager_Object").ToInt64();
-            ulong dialog = 0;
+            ulong layout = (ulong)windowProperty(window, "_LayoutManager_Object").ToInt64();
+            if (layout == 0) return 0;
             for (ulong offset = 0; offset < 256; offset += 8)
             {
                 ulong complete;
-                if (Type(U(layout + offset), out complete) == ".?AVCOpenChatKickedMemberDlg@@") { dialog = complete; break; }
+                if (Type(U(layout + offset), out complete) == ".?AVCOpenChatKickedMemberDlg@@") return complete;
             }
+            return 0;
+        }
+        internal bool IsBanListWindow(IntPtr window) { return Dialog(window) != 0; }
+        internal List<BannedMember> ReadList(IntPtr window, long expectedChat)
+        {
+            if (expectedChat <= 0) throw new InvalidOperationException("대상 채팅방 ID를 확인하지 못했습니다.");
+            ulong dialog = Dialog(window);
             if (dialog == 0) throw new InvalidOperationException("해제 목록의 소유 객체를 확인하지 못했습니다.");
             ulong control = 0;
             for (ulong offset = 0; offset < 4096; offset += 8)
@@ -65,17 +80,27 @@ namespace KakaotalkBot
             for (ulong offset = 0; offset < 256; offset += 8) if (U(control + offset) == (ulong)window.ToInt64()) owns = true;
             if (!owns) throw new InvalidOperationException("해제 목록 창과 객체가 일치하지 않습니다.");
             var candidates = new List<List<BannedMember>>();
+            bool nonemptyTree = false;
             for (ulong offset = 0x100; offset < 0x400; offset += 8)
             {
                 ulong head = U(control + offset), count = U(control + offset + 8);
                 if (count < 1 || count > 10000) continue;
-                var rows = ReadTree(head, (int)count, control, window, expectedLink);
+                var header = Read(head, 32);
+                if (header != null && header[25] == 1) nonemptyTree = true;
+                var rows = ReadTree(head, (int)count, control, window, expectedChat);
                 if (rows != null) candidates.Add(rows);
             }
-            if (candidates.Count != 1) throw new InvalidOperationException("해제 목록이 비었거나 목록 구조를 유일하게 확인하지 못했습니다.");
+            if (candidates.Count == 0 && !nonemptyTree && U(control + MemberTreeOffset + 8) == 0)
+            {
+                ulong head = U(control + MemberTreeOffset);
+                var header = Read(head, 32);
+                if (header != null && header[25] == 1 && U(head) == head && U(head + 8) == head && U(head + 16) == head)
+                    return new List<BannedMember>();
+            }
+            if (candidates.Count != 1) throw new InvalidOperationException("내보낸 목록의 구조 또는 채팅방 ID 검증에 실패했습니다.");
             return candidates[0].OrderByDescending(x => x.KickedAt).ToList();
         }
-        private List<BannedMember> ReadTree(ulong head, int count, ulong control, IntPtr window, long expectedLink)
+        private List<BannedMember> ReadTree(ulong head, int count, ulong control, IntPtr window, long expectedChat)
         {
             var header = Read(head, 32);
             if (header == null || header[25] != 1) return null;
@@ -92,7 +117,8 @@ namespace KakaotalkBot
                 ulong item = BitConverter.ToUInt64(bytes, 32);
                 if (!Is(item, ".?AVListCtrlItem@CEvaListCtrl@@")) return null;
                 ulong data = U(item + 0x38);
-                if (!Is(data, ".?AVKickedMemberItemData@@") || U(data + 0x10) != item || U(data + 0x18) != control || expectedLink <= 0 || U(data + 0x70) != (ulong)expectedLink) return null;
+                // 이 필드는 오픈채팅 링크 ID가 아니라 chatId입니다. 실제 열린 목록의 모든 행에서 검증합니다.
+                if (!Is(data, ".?AVKickedMemberItemData@@") || U(data + 0x10) != item || U(data + 0x18) != control || expectedChat <= 0 || U(data + 0x70) != (ulong)expectedChat) return null;
                 ulong user = U(data + 0x78), nameWidget = U(data + 0x60);
                 if (!Is(user, ".?AVTalkUser_Mutable@@") || !Is(nameWidget, ".?AVTextWidget@xp@@")) return null;
                 ulong id = U(user + 0x20), at = U(data + 0x88), length = U(user + 0x48), capacity = U(user + 0x50);

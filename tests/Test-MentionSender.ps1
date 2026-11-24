@@ -7,6 +7,7 @@ $executable = Join-Path $outputDirectory 'MentionSenderTests.exe'
 & $compiler /nologo /target:exe /platform:x64 /r:System.Core.dll "/out:$executable" `
     (Join-Path $repository 'KakaotalkBot\KakaoInputMentions.cs') `
     (Join-Path $repository 'KakaotalkBot\KakaoMentionSender.cs') `
+    (Join-Path $repository 'KakaotalkBot\ChatProfanityFilter.cs') `
     (Join-Path $PSScriptRoot 'MentionSenderTests.cs')
 if ($LASTEXITCODE -ne 0) { throw '멘션 송신 테스트 컴파일 실패' }
 & $executable

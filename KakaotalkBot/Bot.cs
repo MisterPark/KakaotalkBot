@@ -51,6 +51,8 @@ namespace KakaotalkBot
         private ChatDatabaseReceiver receiver;
         private DateTime nextOpenAttempt;
         private DateTime nextRoomRecycle;
+        internal static readonly TimeSpan RoomRecycleInterval = TimeSpan.FromHours(24);
+        internal static readonly TimeSpan RoomOpenRetryInterval = TimeSpan.FromMinutes(2);
         public DateTime LastRoomRecycle { get; private set; }
         public string RoomRecycleStatus { get; private set; }
         private bool updating;
@@ -225,7 +227,8 @@ namespace KakaotalkBot
             LastProcessingError = null;
             receiver.Start();
             isBotRunning = true;
-            nextRoomRecycle = DateTime.UtcNow.AddHours(4);
+            nextRoomRecycle = DateTime.UtcNow.Add(RoomRecycleInterval);
+            nextOpenAttempt = DateTime.MinValue;
             RoomRecycleStatus = null;
         }
 
@@ -243,6 +246,8 @@ namespace KakaotalkBot
         {
             nextProcessingAttempt = DateTime.MinValue;
             Database.Instance.Operators.ResetLive();
+            moderationRoster = null;
+            moderationAccess = null;
             chatLog = new List<string>();
 
             commands.Clear();
@@ -345,7 +350,7 @@ namespace KakaotalkBot
         internal static bool ShouldQueueCommand(string message, IEnumerable<string> sheetKeywords)
         {
             if (string.IsNullOrWhiteSpace(message)) return false;
-            return IsGovernanceCommand(message) || message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || message == "/출첵" || Quiz.IsQuizCommand(message) || OperatorCommandPolicy.Name(message) == "/퀴즈등록" || OperatorCommandPolicy.Name(message) == "/퀴즈삭제" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
+            return message == "/명령어" || message == "/?" || IsGovernanceCommand(message) || message == "/퀘스트" || message == "/일퀘" || message == "/출석" || message == "/출석체크" || message == "/출첵" || Quiz.IsQuizCommand(message) || OperatorCommandPolicy.Name(message) == "/퀴즈등록" || OperatorCommandPolicy.Name(message) == "/퀴즈삭제" || OperatorCommandPolicy.RequiresOperator(message) || OperatorCommandPolicy.Name(message) == "/통계" ||
                 OperatorCommandPolicy.Name(message) == "/월간랭킹" || OperatorCommandPolicy.Name(message) == "/채팅랭킹" ||
                 OperatorCommandPolicy.Name(message) == "/네임드" || OperatorCommandPolicy.Name(message) == "/레벨랭킹" || OperatorCommandPolicy.Name(message) == "/랭킹" || sheetKeywords.Any(k => message.StartsWith(k));
         }
@@ -379,9 +384,20 @@ namespace KakaotalkBot
         internal static string FoldChatOutput(string text)
         {
             if (string.IsNullOrEmpty(text)) return text;
+            string fold = new string('\u200B', 500);
+            text = text.Replace(fold + "\r\n", "").Replace(fold + "\n", "").Replace(fold, "");
             int titleEnd = text.IndexOf('\n');
             if (titleEnd < 0) return text;
-            return text.Insert(titleEnd + 1, new string('\u200B', 500) + "\n");
+            return text.Insert(titleEnd + 1, fold + "\n");
+        }
+        internal static string FormatChatOutput(string text)
+        {
+            text = ChatProfanityFilter.Mask(text);
+            if (string.IsNullOrEmpty(text)) return text;
+            bool folded = text.Contains(new string('\u200B', 500));
+            if (!folded && text.Length < 300 && text.Count(c => c == '\n') < 7) return text;
+            if (text.IndexOf('\n') < 0) text = "[안내]\n" + text;
+            return FoldChatOutput(text);
         }
 
         private void ProcessCommand()
@@ -394,8 +410,8 @@ namespace KakaotalkBot
             {
                 if (DateTime.UtcNow >= nextOpenAttempt)
                 {
-                    nextOpenAttempt = DateTime.UtcNow.AddSeconds(3);
-                    WindowsMacro.Instance.OpenChatRoom(TargetWindow);
+                    nextOpenAttempt = DateTime.UtcNow.Add(RoomOpenRetryInterval);
+                    WindowsMacro.Instance.OpenChatRoom(TargetWindow, SelectedRoom == null ? 0 : SelectedRoom.ProcessId);
                 }
                 return;
             }
@@ -675,7 +691,7 @@ namespace KakaotalkBot
             else if (Quiz.IsQuizCommand(command.Keyword))
             {
                 if (command.Keyword == "/퀴즈목록")
-                    WindowsMacro.Instance.SendTextToChatroom(TargetWindow, Database.Instance.GetQuizCategoryHelp());
+                    foreach (string page in Database.Instance.GetQuizListMessages()) WindowsMacro.Instance.SendTextToChatroom(TargetWindow, page);
                 else if (!AllowsQuizRequest(command.Keyword))
                     WindowsMacro.Instance.SendTextToChatroom(TargetWindow, GetAutomaticQuizStatus());
                 else
@@ -692,12 +708,12 @@ namespace KakaotalkBot
                 {
                     if (operation == "/퀴즈삭제")
                     {
-                        string category, question;
-                        if (!Quiz.TryParseDeletion(command.Keyword, out category, out question))
+                        long number;
+                        if (!Quiz.TryParseDeletion(command.Keyword, out number))
                         { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, Quiz.DeletionHelp); return; }
-                        bool ended = Database.Instance.DeleteQuiz(category, question);
+                        bool ended = Database.Instance.DeleteQuiz(number);
                         if (ended) quizAnswers.Clear();
-                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "문제를 삭제했습니다." + (ended ? " 진행 중이던 해당 퀴즈도 종료했습니다." : ""));
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, number + "번 퀴즈를 삭제했습니다." + (ended ? " 진행 중이던 해당 퀴즈도 종료했습니다." : ""));
                     }
                     else
                     {
@@ -705,7 +721,7 @@ namespace KakaotalkBot
                         if (!Quiz.TryParseRegistration(command.Keyword, out quiz, out error))
                         { WindowsMacro.Instance.SendTextToChatroom(TargetWindow, error); return; }
                         Database.Instance.RegisterQuiz(quiz);
-                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, "문제를 등록했습니다.");
+                        WindowsMacro.Instance.SendTextToChatroom(TargetWindow, quiz.Number + "번 퀴즈를 등록했습니다.");
                     }
                 }
                 catch (InvalidOperationException ex)
@@ -769,7 +785,9 @@ namespace KakaotalkBot
         {
             if (!IsBotRunning || !StaticVariable.AutoReboot || SelectedRoom == null ||
                 string.IsNullOrWhiteSpace(TargetWindow) || commands.Count != 0 || now < nextRoomRecycle) return;
-            nextRoomRecycle = now.AddMinutes(1);
+            // 정리 실패/초안 보류도 한 번의 시도로 셉니다. 매분 닫기를 반복하지 않습니다.
+            // 닫혀 있는 창의 복구는 전송 큐의 열기 경로에서 처리합니다.
+            nextRoomRecycle = now.Add(RoomRecycleInterval);
             try
             {
                 if (!recycle())
@@ -779,7 +797,6 @@ namespace KakaotalkBot
                     return;
                 }
                 LastRoomRecycle = now.ToLocalTime();
-                nextRoomRecycle = now.AddHours(4);
                 RoomRecycleStatus = null;
             }
             catch (Exception error)

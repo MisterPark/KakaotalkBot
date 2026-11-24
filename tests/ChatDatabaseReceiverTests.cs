@@ -259,6 +259,32 @@ internal static class ChatDatabaseReceiverTests
         Check(roles.Members.Single(m => m.UserId == 7).MemberType == 4, "프로필 DB 역할이 참여자 스냅샷으로 전달");
         Check(roles.Members.Single(m => m.UserId == 7).MemberPrivilege == "18446744073709551615", "원본 권한 값 문자열 보존");
         Check(users.MemberType(7, 0) == -1 && users.MemberType(7, 123) == -1, "다른 방 역할 사용 금지");
+        users.OwnIds.Clear(); users.OwnIds.Add(9); users.OwnIds.Add(11);
+        Check(ChatRosterSnapshot.Read(rosterPath, room, users).OwnAuthorId == 0, "다른 방이나 일반 프로필의 본인 ID를 현재 방에 적용하지 않음");
+        users.OwnIds.Add(7);
+        Check(ChatRosterSnapshot.Read(rosterPath, room, users).OwnAuthorId == 7, "자동 확인한 본인 ID를 현재 방 참여자와 대조해 전달");
+        users.OwnIds.Add(8);
+        Check(ChatRosterSnapshot.Read(rosterPath, room, users).OwnAuthorId == 7, "이미 퇴장한 본인 프로필은 현재 봇 ID 후보에서 제외");
+        using (var db = new ChatSqlite(rosterPath, false)) db.Query("UPDATE chatMembers SET isActive=1 WHERE chatId=50 AND userId=8");
+        Check(ChatRosterSnapshot.Read(rosterPath, room, users).OwnAuthorId == 0, "현재 방 본인 프로필 후보가 여러 개면 임의로 선택하지 않음");
+        using (var db = new ChatSqlite(usersPath, false)) db.Query("INSERT INTO talkUser VALUES(0,99,'봇 계정','',1,'self-role')");
+        users.Load(usersPath, roomsPath); users.ObserveOwnAuthor(50, 9);
+        var selfRoster = ChatRosterSnapshot.Read(rosterPath, room, users);
+        var self = selfRoster.Members.Single(m => m.UserId == 9);
+        Check(selfRoster.OwnAuthorId == 9 && self.IsPresent && self.Nickname == "봇 계정" && self.MemberType == 1 && self.MemberPrivilege == "self-role",
+            "실제 회귀: 참여자 ID 0과 해당 방 PC 발신 ID를 연결하여 봇 계정·방장 역할 전달");
+        Check(selfRoster.Members.All(m => m.UserId > 0), "ID 0 자체를 권한 주체로 사용하지 않음");
+        users.ObserveOwnAuthor(50, 10);
+        Check(ChatRosterSnapshot.Read(rosterPath, room, users).OwnAuthorId == 0, "방별 발신 ID가 모호하면 ID 0을 임의 계정에 연결하지 않음");
+        var otherRoomUsers = new ChatUserDirectory(); otherRoomUsers.Load(usersPath, roomsPath); otherRoomUsers.ObserveOwnAuthor(999, 9);
+        Check(ChatRosterSnapshot.Read(rosterPath, room, otherRoomUsers).OwnAuthorId == 0, "다른 방의 발신 기록으로 현재 방 ID 0을 해석하지 않음");
+        var sent = new object[] { 100L, 9L, 1L, 100L, "본인 메시지", 0L, 1L };
+        ChatMessageDecoder.Decode(room, sent, otherRoomUsers, false);
+        Check(ChatRosterSnapshot.Read(rosterPath, room, otherRoomUsers).OwnAuthorId == 9, "새 PC 발신 메시지도 방별 본인 ID 자동 확인에 반영");
+        using (var db = new ChatSqlite(rosterPath, false)) db.Query("INSERT INTO chatMembers VALUES(50,9,1)");
+        selfRoster = ChatRosterSnapshot.Read(rosterPath, room, otherRoomUsers);
+        Check(selfRoster.OwnAuthorId == 9 && selfRoster.Members.Count(m => m.UserId == 9) == 1 && selfRoster.Members.Single(m => m.UserId == 9).MemberType == -1,
+            "실제 ID 행이 있으면 ID 0의 역할로 덮어쓰거나 중복 생성하지 않음");
 
         var dm = new ChatLogCursor(100);
         var dmRows = dm.Read(output);

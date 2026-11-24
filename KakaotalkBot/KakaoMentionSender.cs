@@ -21,6 +21,7 @@ namespace KakaotalkBot
     /// <summary>멘션 하나와 본문을 준비하고, 대상 ID를 확인한 후 한 번 전송한다.</summary>
     public sealed class KakaoMentionSender
     {
+        private sealed class FilteredMentionException : InvalidOperationException { }
         private readonly IMentionInput input;
         private readonly Action<int> delay;
         private InputMentionSnapshot prepared;
@@ -39,9 +40,11 @@ namespace KakaotalkBot
                 throw new ArgumentException("멘션 후보를 검색할 닉네임이 필요합니다.", "candidateNickname");
             string search = "@" + candidateNickname;
             if (string.IsNullOrWhiteSpace(body)) throw new ArgumentException("보낼 본문이 필요합니다.", "body");
+            body = ChatProfanityFilter.Mask(body);
             body = body.Replace("\r\n", "\n").Replace('\r', '\n').Replace('\n', '\r');
             if (body.Length > 3500 || body.Any(c => c == '\uFFFC' || (char.IsControl(c) && c != '\r' && c != '\t')))
                 throw new ArgumentException("본문은 3,500자 이내이며 개행·탭 이외의 제어 문자를 포함할 수 없습니다.", "body");
+            if (ChatProfanityFilter.NeedsMasking(candidateNickname)) throw new FilteredMentionException();
             InputMentionSnapshot owned = null;
             try
             {
@@ -81,6 +84,13 @@ namespace KakaotalkBot
                 owned = selected;
                 if (string.Equals(owned.Mentions[0].DisplayText, "@all", StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("전체 멘션은 개인 멘션의 원본으로 사용하지 않습니다. 다른 후보 닉네임을 지정하세요.");
+                if (ChatProfanityFilter.NeedsMasking(owned.Mentions[0].DisplayText))
+                {
+                    // 실제 선택된 라벨도 검사합니다. 정리가 확인된 경우에만 일반 문구로 바꿉니다.
+                    input.Clear(owned);
+                    owned = null;
+                    throw new FilteredMentionException();
+                }
                 string suffix = (owned.Text == "\uFFFC\r" ? " " : "") + body;
                 string expectedText = owned.Text.Substring(0, owned.Text.Length - 1) + suffix + "\r";
                 owned = input.Append(owned, suffix);
@@ -102,7 +112,15 @@ namespace KakaotalkBot
         /// <summary>64비트 STA에서 준비와 전송을 한 번 수행한다. 실패 시 자동 재시도하지 않는다.</summary>
         public void Send(long userId, string candidateNickname, string body, IEnumerable<string> fallbackNicknames = null)
         {
-            var ready = Prepare(userId, candidateNickname, body, fallbackNicknames);
+            InputMentionSnapshot ready;
+            try { ready = Prepare(userId, candidateNickname, body, fallbackNicknames); }
+            catch (FilteredMentionException)
+            {
+                // 카카오톡 멘션 라벨은 원래 이름을 표시하므로 비속어가 있으면 가린 일반 텍스트로 보냅니다.
+                // 전송 시도 전의 필터 판정에만 적용하며 전송 실패를 재시도하지 않습니다.
+                KakaoPlainSender.Send(input, "@" + ChatProfanityFilter.Mask(candidateNickname) + " " + body, delay);
+                return;
+            }
             SendPrepared(ready);
         }
 
@@ -136,6 +154,7 @@ namespace KakaotalkBot
         internal static void Send(IMentionInput input, string body, Action<int> delay)
         {
             if (body == null) throw new ArgumentNullException("body");
+            body = ChatProfanityFilter.Mask(body);
             string text = body.Replace("\r\n", "\n").Replace('\r', '\n').Replace('\n', '\r');
             if (string.IsNullOrWhiteSpace(text) || text.Length > 3500 || text.Any(c => c == '\uFFFC' || char.IsControl(c) && c != '\r' && c != '\t'))
                 throw new ArgumentException("알림 본문 형식이 올바르지 않습니다.");

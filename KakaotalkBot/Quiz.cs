@@ -14,6 +14,7 @@ namespace KakaotalkBot
         public string Hint = string.Empty;
         public string Explanation = string.Empty;
         public long AskedCount;
+        public long Number;
 
         // 전체 정렬 없이 최소 출제 횟수인 원본 인덱스만 모읍니다.
         internal static List<int> LeastAsked(List<Quiz> quizzes, List<int> indexes)
@@ -54,7 +55,39 @@ namespace KakaotalkBot
             return result;
         }
 
-        public const string DeletionHelp = "/퀴즈삭제 분류 | 문제 전체 문장\n예: /퀴즈삭제 과학 | 물의 화학식은?";
+        public const string DeletionHelp = "/퀴즈삭제 고유번호\n예: /퀴즈삭제 123\n번호는 /퀴즈목록에서 확인하세요.";
+
+        public static bool TryParseDeletion(string text, out long number)
+        {
+            number = 0; const string command = "/퀴즈삭제";
+            return text != null && text.StartsWith(command, StringComparison.Ordinal) && text.Length > command.Length && char.IsWhiteSpace(text[command.Length]) &&
+                long.TryParse(text.Substring(command.Length).Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out number) && number > 0;
+        }
+
+        internal static List<string> ListMessages(IEnumerable<Quiz> quizzes)
+        {
+            var rows = quizzes.OrderBy(q => q.Number).ToArray();
+            if (rows.Length == 0) return new List<string> { "[퀴즈목록]\n등록된 퀴즈가 없습니다." };
+            if (rows.Any(q => q.Number <= 0) || rows.Select(q => q.Number).Distinct().Count() != rows.Length)
+                throw new InvalidOperationException("퀴즈 고유번호를 준비 중입니다. 콘텐츠 갱신 상태를 확인해 주세요.");
+            var chunks = new List<string>(); var body = new System.Text.StringBuilder();
+            foreach (var quiz in rows)
+            {
+                string line = quiz.Number + ". [" + quiz.Category + " · " + quiz.Difficulty + "] " + quiz.Question + "\n";
+                if (body.Length > 0 && line.Length <= 3000 && body.Length + line.Length > 3000) { chunks.Add(body.ToString().TrimEnd()); body.Clear(); }
+                // 시트에서 직접 넣은 긴 문장도 생략하지 않고 나눠 전송합니다.
+                while (line.Length > 0)
+                {
+                    int count = Math.Min(3000 - body.Length, line.Length);
+                    if (count < line.Length && count > 0 && char.IsHighSurrogate(line[count - 1])) count--;
+                    if (count == 0) { chunks.Add(body.ToString().TrimEnd()); body.Clear(); continue; }
+                    body.Append(line.Substring(0, count)); line = line.Substring(count);
+                    if (body.Length >= 2999 || line.Length > 0) { chunks.Add(body.ToString().TrimEnd()); body.Clear(); }
+                }
+            }
+            if (body.Length > 0) chunks.Add(body.ToString().TrimEnd());
+            return chunks.Select((chunk, i) => "[퀴즈목록 " + (i + 1) + "/" + chunks.Count + " · 전체 " + rows.Length + "개]\n" + chunk).ToList();
+        }
 
         public static bool TryParseDeletion(string text, out string category, out string question)
         {
@@ -115,7 +148,7 @@ namespace KakaotalkBot
 
         public List<object> ToRow()
         {
-            return new List<object>() { Question, Category, Difficulty, Answer, Hint, Explanation, AskedCount };
+            return new List<object>() { Question, Category, Difficulty, Answer, Hint, Explanation, AskedCount, Number > 0 ? Number.ToString(System.Globalization.CultureInfo.InvariantCulture) : "" };
         }
 
         public static Quiz ToCommonSense(List<string> list)
@@ -130,8 +163,64 @@ namespace KakaotalkBot
             if (list.Count > 6 && !string.IsNullOrWhiteSpace(list[6]) &&
                 (!long.TryParse(list[6], out cs.AskedCount) || cs.AskedCount < 0))
                 throw new InvalidDataException("퀴즈 출제횟수는 0 이상의 정수여야 합니다.");
+            if (list.Count > 7 && !string.IsNullOrWhiteSpace(list[7]) &&
+                (!long.TryParse(list[7], out cs.Number) || cs.Number <= 0)) throw new InvalidDataException("퀴즈 고유번호는 양의 정수여야 합니다.");
 
             return cs;
+        }
+    }
+    // 한 시트에 한 봇이 쓰는 기존 운영 방식. 삭제/재시작 후에도 번호를 다시 쓰지 않습니다.
+    internal sealed class QuizNumberStore
+    {
+        private readonly string path;
+        private static readonly Dictionary<string, object> gates = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        private readonly object gate;
+        private long last;
+        internal QuizNumberStore(string path)
+        {
+            this.path = Path.GetFullPath(path);
+            lock (gates) { if (!gates.TryGetValue(this.path, out gate)) gates.Add(this.path, gate = new object()); }
+            lock (gate) Refresh();
+        }
+        private void Refresh()
+        {
+            if (!File.Exists(path)) return;
+            long stored;
+            if (!long.TryParse(File.ReadAllText(path), out stored) || stored < 0) throw new InvalidDataException("퀴즈 번호 기록이 잘못되었습니다.");
+            last = Math.Max(last, stored);
+        }
+        internal long Last { get { lock (gate) { Refresh(); return last; } } }
+        internal static string MaximumCell(long number) { return "마지막고유번호:" + number.ToString(System.Globalization.CultureInfo.InvariantCulture); }
+        internal static long ReadMaximum(List<string> header)
+        {
+            if (header.Count < 9) return 0;
+            const string prefix = "마지막고유번호:"; long value;
+            if (!header[8].StartsWith(prefix, StringComparison.Ordinal) || !long.TryParse(header[8].Substring(prefix.Length), out value) || value < 0)
+                throw new InvalidDataException("퀴즈 번호 기록 열이 변경되었습니다.");
+            return value;
+        }
+        private void Save(long value)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)); string temp = path + ".tmp";
+            File.WriteAllText(temp, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (File.Exists(path)) File.Replace(temp, path, null); else File.Move(temp, path);
+            last = value;
+        }
+        internal void Observe(long number) { lock (gate) { Refresh(); if (number > last) Save(number); } }
+        internal long Next() { lock (gate) { Refresh(); if (last == long.MaxValue) throw new InvalidOperationException("퀴즈 번호 범위를 초과했습니다."); Save(last + 1); return last; } }
+        internal void Assign(List<Quiz> quizzes)
+        {
+            lock (gate)
+            {
+                Refresh();
+                var ids = quizzes.Where(q => q.Number > 0).Select(q => q.Number).ToArray();
+                if (ids.Distinct().Count() != ids.Length) throw new InvalidOperationException("퀴즈 고유번호가 중복되어 있습니다. 시트의 고유번호 열을 확인하세요.");
+                long maximum = Math.Max(last, ids.Length == 0 ? 0 : ids.Max());
+                var missing = quizzes.Where(q => q.Number == 0).ToArray();
+                if (maximum > long.MaxValue - missing.Length) throw new InvalidOperationException("퀴즈 번호 범위를 초과했습니다.");
+                if (maximum + missing.Length > last) Save(maximum + missing.Length);
+                foreach (var quiz in missing) quiz.Number = ++maximum;
+            }
         }
     }
     // 이 목록은 봇 처리 스레드만 수정하며, 통신 작업에는 복사본만 전달합니다.
@@ -142,6 +231,8 @@ namespace KakaotalkBot
         internal bool CountOnly { get { return Before != null && After != null && SameValue(Before, After); } }
         internal Quiz Target { get { return After ?? Before; } }
         internal static bool SameKey(Quiz a, Quiz b)
+        { return a != null && b != null && (a.Number > 0 && b.Number > 0 ? a.Number == b.Number : SameText(a, b)); }
+        internal static bool SameText(Quiz a, Quiz b)
         { return a != null && b != null && a.Category.Trim() == b.Category.Trim() && a.Question.Trim() == b.Question.Trim(); }
         internal static bool SameValue(Quiz a, Quiz b)
         { return a == null || b == null ? a == b : a.ToRow().Take(6).SequenceEqual(b.ToRow().Take(6)); }
@@ -167,6 +258,21 @@ namespace KakaotalkBot
             }
         }
         internal QuizChange[] Snapshot() { return changes.Select(c => c.Copy()).ToArray(); }
+        internal void BindNumbers(List<Quiz> source, QuizNumberStore numbers)
+        {
+            var next = changes.Select(c => c.Copy()).ToList(); bool changed = false;
+            foreach (var c in next)
+            {
+                if (c.Target.Number > 0) { numbers.Observe(c.Target.Number); continue; }
+                var matches = source.Where(q => QuizChange.SameText(q, c.Target)).ToArray();
+                if (matches.Length > 1) throw new InvalidOperationException("이전 퀴즈 변경 기록의 대상이 중복되어 고유번호를 연결하지 못했습니다.");
+                long number = matches.Length == 1 ? matches[0].Number : numbers.Next();
+                if (c.Before != null) c.Before.Number = number;
+                if (c.After != null) c.After.Number = number;
+                changed = true;
+            }
+            if (changed) Save(next);
+        }
         private void Save(List<QuizChange> next)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
@@ -217,6 +323,8 @@ namespace KakaotalkBot
             foreach (var c in pending)
             {
                 var matches = result.Where(q => QuizChange.SameKey(q, c.Target)).ToList();
+                if (c.Before == null && c.After != null && c.After.Number > 0 && matches.Any(q => !QuizChange.SameText(q, c.After)))
+                    throw new InvalidOperationException("동일한 퀴즈 고유번호가 다른 문제에 사용되어 동기화를 중단했습니다.");
                 if (c.After != null)
                 {
                     // 시트에 같은 분류·문제가 있으면 중복 등록하지 않고 시트의 최신 내용을 사용합니다.

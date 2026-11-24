@@ -144,31 +144,37 @@ internal static class BotCommandBridgeTests
             DateTime now = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
             Set(bot, "isBotRunning", true);
             Set(bot, "targetWindow", "검증방");
-            Set(bot, "nextRoomRecycle", now.AddHours(4));
+            Set(bot, "nextRoomRecycle", now.AddHours(24));
             bool previousAuto = StaticVariable.AutoReboot;
             StaticVariable.AutoReboot = true;
             int recycled = 0;
             Func<bool> recycle = () => { recycled++; return true; };
-            maintain.Invoke(bot, new object[] { now.AddHours(5), recycle });
+            maintain.Invoke(bot, new object[] { now.AddHours(25), recycle });
             if (recycled != 0 || commands.Count != queuedBeforeOwn) throw new Exception("명령 대기 중 재열기 또는 큐 손실");
             commands.Clear();
-            maintain.Invoke(bot, new object[] { now.AddHours(3), recycle });
-            if (recycled != 0) throw new Exception("4시간 이전 재열기");
+            maintain.Invoke(bot, new object[] { now.AddHours(23), recycle });
+            if (recycled != 0) throw new Exception("24시간 이전 재열기");
             StaticVariable.AutoReboot = false;
-            maintain.Invoke(bot, new object[] { now.AddHours(4), recycle });
+            maintain.Invoke(bot, new object[] { now.AddHours(24), recycle });
             if (recycled != 0) throw new Exception("자동 재열기 해제 무시");
             StaticVariable.AutoReboot = true;
-            maintain.Invoke(bot, new object[] { now.AddHours(4), new Func<bool>(() => false) });
+            maintain.Invoke(bot, new object[] { now.AddHours(24), new Func<bool>(() => false) });
             if (bot.RoomRecycleStatus == null || bot.LastRoomRecycle != DateTime.MinValue) throw new Exception("초안 대기 처리 실패");
-            maintain.Invoke(bot, new object[] { now.AddHours(4).AddSeconds(30), recycle });
-            if (recycled != 0) throw new Exception("초안 대기 재시도 간격 오류");
-            maintain.Invoke(bot, new object[] { now.AddHours(4).AddMinutes(1), new Func<bool>(() => { throw new Exception("시험"); }) });
+            for (int minute = 1; minute < 24 * 60; minute++)
+                maintain.Invoke(bot, new object[] { now.AddHours(24).AddMinutes(minute), recycle });
+            if (recycled != 0) throw new Exception("초안 보류 후 하루 이내 정리 반복");
+            maintain.Invoke(bot, new object[] { now.AddHours(48), new Func<bool>(() => { throw new Exception("시험"); }) });
             if (!bot.IsBotRunning || !bot.RoomRecycleStatus.Contains("시험")) throw new Exception("재열기 실패 시 수신 유지 실패");
-            maintain.Invoke(bot, new object[] { now.AddHours(4).AddMinutes(2), recycle });
+            for (int minute = 1; minute < 24 * 60; minute++)
+                maintain.Invoke(bot, new object[] { now.AddHours(48).AddMinutes(minute), recycle });
+            if (recycled != 0) throw new Exception("정리 실패 후 하루 이내 정리 반복");
+            maintain.Invoke(bot, new object[] { now.AddHours(72), recycle });
             if (recycled != 1 || !bot.IsBotRunning || bot.RoomRecycleStatus != null || answers.Count != answersBeforeOwn)
                 throw new Exception("재열기 성공 후 상태 유지 실패");
-            maintain.Invoke(bot, new object[] { now.AddHours(8).AddMinutes(1), recycle });
-            if (recycled != 1) throw new Exception("성공 후 4시간 주기 오류");
+            maintain.Invoke(bot, new object[] { now.AddHours(95).AddMinutes(59), recycle });
+            if (recycled != 1) throw new Exception("성공 후 24시간 주기 오류");
+            maintain.Invoke(bot, new object[] { now.AddHours(96), recycle });
+            if (recycled != 2) throw new Exception("다음 날 정리 누락");
             deliver(10, 3001, "/퀘스트", null);
             deliver(10, 3002, "/일퀘", null);
             deliver(10, 3003, "/출석", null);
@@ -269,7 +275,7 @@ internal static class BotCommandBridgeTests
             string registrationError;
             if (!Quiz.TryParseRegistration("/퀴즈등록 과학 | 하 | 물의 화학식은? | H2O | 알파벳과 숫자 | 수소 두 개와 산소 한 개", out registered, out registrationError))
                 throw new Exception("문제 등록 파싱 실패");
-            if (!registered.ToRow().Select(Convert.ToString).SequenceEqual(new[] { "물의 화학식은?", "과학", "하", "H2O", "알파벳과 숫자", "수소 두 개와 산소 한 개", "0" }))
+            if (!registered.ToRow().Select(Convert.ToString).SequenceEqual(new[] { "물의 화학식은?", "과학", "하", "H2O", "알파벳과 숫자", "수소 두 개와 산소 한 개", "0", "" }))
                 throw new Exception("시트 등록 열 순서 오류");
             foreach (string invalid in new[] { "/퀴즈등록", "/퀴즈등록 과학|하|문제|답|힌트", "/퀴즈등록 과학|하|문제||힌트|해설", "/퀴즈등록 과학|하|문제|답|힌트|해설|초과", "/퀴즈등록 과학|하|문제|답|힌트|해설\n다음줄" })
                 if (Quiz.TryParseRegistration(invalid, out registered, out registrationError)) throw new Exception("잘못된 등록 입력 허용");
@@ -333,6 +339,54 @@ internal static class BotCommandBridgeTests
                 throw new Exception("처리된 통신 실패가 기존 캐시를 덮어씀");
             Database.Instance.ResetCommonSense();
             answers.Clear();
+            {
+                var format = typeof(Bot).GetMethod("FormatChatOutput", BindingFlags.NonPublic | BindingFlags.Static);
+                if ((string)format.Invoke(null, new object[] { "씨발 안내" }) != "** 안내") throw new Exception("공통 응답 필터 누락");
+                string aliasHelp = Database.Instance.GetAnswer("/?");
+                if (aliasHelp != Database.Instance.GetAnswer("/명령어") || !aliasHelp.Contains("/선거시작") || !aliasHelp.Contains("/퀴즈삭제 고유번호"))
+                    throw new Exception("명령 목록 기본 안내 또는 별칭 연결 누락");
+                var shouldQueue = typeof(Bot).GetMethod("ShouldQueueCommand", BindingFlags.NonPublic | BindingFlags.Static);
+                foreach (string helpAlias in new[] { "/?", "/명령어" })
+                    if (!(bool)shouldQueue.Invoke(null, new object[] { helpAlias, new string[0] })) throw new Exception("시트 없는 도움말 수신 누락");
+                if (LocoMessagePart.Text("씨발").TextValue != "**" || LocoMessagePart.Mention(123, "병신").Nickname != "**")
+                    throw new Exception("보조 송신 표시 문자열 필터 누락");
+                string marker = new string('\u200B', 500), longReply = "[제목]\n" + new string('가', 400);
+                string folded = (string)format.Invoke(null, new object[] { longReply });
+                if (!folded.StartsWith("[제목]\n" + marker + "\n") || folded != (string)format.Invoke(null, new object[] { folded }))
+                    throw new Exception("긴 응답 제목 뒤 접기 또는 중복 삽입 방지 오류");
+                if ((string)format.Invoke(null, new object[] { "짧은 안내" }) != "짧은 안내" || !((string)format.Invoke(null, new object[] { new string('나', 400) })).StartsWith("[안내]\n" + marker))
+                    throw new Exception("짧은 응답 또는 한 줄 긴 응답 접기 오류");
+                if (!((string)format.Invoke(null, new object[] { "[제목]\n1\n2\n3\n4\n5\n6\n7" })).Contains(marker))
+                    throw new Exception("여러 줄 응답 접기 누락");
+                var numberType = typeof(Bot).Assembly.GetType("KakaotalkBot.QuizNumberStore");
+                var changesType = typeof(Bot).Assembly.GetType("KakaotalkBot.QuizChangeStore");
+                string caseDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "quiz-number-cases");
+                var numberStore = Activator.CreateInstance(numberType, flags, null, new object[] { System.IO.Path.Combine(caseDir, "numbers.txt") }, null);
+                var changeStore = Activator.CreateInstance(changesType, flags, null, new object[] { System.IO.Path.Combine(caseDir, "changes.json") }, null);
+                dbType.GetField("quizNumbers", flags).SetValue(Database.Instance, numberStore);
+                dbType.GetField("quizChanges", flags).SetValue(Database.Instance, changeStore);
+                Database.Instance.CommonSenses.Clear();
+                var one = new Quiz { Category = "과학", Question = "번호 첫 문제", Answer = "첫 답" };
+                var two = new Quiz { Category = "과학", Question = "번호 다음 문제", Answer = "다음 답" };
+                var registerQuiz = dbType.GetMethod("RegisterQuiz", flags);
+                var deleteNumber = dbType.GetMethod("DeleteQuiz", flags, null, new[] { typeof(long) }, null);
+                registerQuiz.Invoke(Database.Instance, new object[] { one }); registerQuiz.Invoke(Database.Instance, new object[] { two });
+                if (one.Number != 1 || two.Number != 2) throw new Exception("등록 시 번호 자동 발급 오류");
+                Database.Instance.CurrentAnswerIndex = 1; var activeByNumber = Database.Instance.GetCurrentQuiz();
+                if ((bool)deleteNumber.Invoke(Database.Instance, new object[] { 1L }) || !object.ReferenceEquals(activeByNumber, Database.Instance.GetCurrentQuiz()))
+                    throw new Exception("번호 삭제 후 다른 진행 중 퀴즈 보존 오류");
+                if (!(bool)deleteNumber.Invoke(Database.Instance, new object[] { 2L }) || Database.Instance.GetCurrentQuiz() != null)
+                    throw new Exception("번호로 진행 중 퀴즈 삭제 시 종료 누락");
+                var three = new Quiz { Category = "과학", Question = "다시 등록", Answer = "답" };
+                registerQuiz.Invoke(Database.Instance, new object[] { three });
+                if (three.Number != 3) throw new Exception("삭제한 번호 재사용 오류");
+                var messagesByNumber = (List<string>)dbType.GetMethod("GetQuizListMessages", flags).Invoke(Database.Instance, null);
+                if (!messagesByNumber.Single().Contains("3. [과학") || !messagesByNumber[0].Contains("다시 등록")) throw new Exception("전체 퀴즈 번호 목록 연결 오류");
+                var governanceCommand = typeof(Bot).GetMethod("IsGovernanceCommand", BindingFlags.NonPublic | BindingFlags.Static);
+                foreach (string textCommand in new[] { "/선거시작", "/보궐선거", "/선거기록", "/선거기록 2" })
+                    if (!(bool)governanceCommand.Invoke(null, new object[] { textCommand })) throw new Exception("선거 명령 수신 연결 누락");
+                Console.WriteLine("PASS: stable quiz numbers, exact deletion, full list, global title folding and election command routing (no network or UI input)");
+            }
             var receiveAnswer = typeof(Bot).GetMethod("ProcessQuizAnswer", flags);
             User soakUser;
             Database.Instance.FindUser(7, out soakUser);

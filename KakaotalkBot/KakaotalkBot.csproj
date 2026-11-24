@@ -99,6 +99,7 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
+    <Reference Include="System.Security" />
     <Reference Include="Windows"><HintPath>$([System.IO.Directory]::GetFiles('$(MSBuildProgramFiles32)\Windows Kits\10\UnionMetadata', 'Windows.winmd', System.IO.SearchOption.AllDirectories).GetValue(0))</HintPath><IsWinMDFile>true</IsWinMDFile><Private>false</Private></Reference>
     <Reference Include="System.Runtime.WindowsRuntime"><HintPath>$(SystemRoot)\Microsoft.NET\Framework64\v4.0.30319\System.Runtime.WindowsRuntime.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="System.Runtime" />
@@ -109,10 +110,30 @@
   <ItemGroup>
     <Compile Include="Article.cs" />
     <Compile Include="Bot.cs" />
+    <Compile Include="ChatProfanityFilter.cs" />
+    <Compile Include="CommandHelp.cs" />
+    <Compile Include="PersonalReplySettings.cs" />
+    <Compile Include="PersonalReplyAi.cs" />
+    <Compile Include="PersonalReplyActions.cs" />
+    <Compile Include="PersonalEmoticonHistory.cs" />
+    <Compile Include="PersonalActionMemory.cs" />
+    <Compile Include="PersonalActionSender.cs" />
+    <Compile Include="PersonalReplyCoordinator.cs" />
+    <Compile Include="PersonalReplyService.cs" />
+    <Compile Include="PersonalReplyPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="ChatRoomSearch.cs" />
     <Compile Include="GovernanceStore.cs" />
     <Compile Include="ModerationOcr.cs" />
+    <Compile Include="ModerationMenu.cs" />
+    <Compile Include="ModerationMenuImages.cs" />
+    <Compile Include="ModerationNavigation.cs" />
     <Compile Include="BannedMemberMemory.cs" />
+    <Compile Include="BannedListLoading.cs" />
     <Compile Include="ModerationMacro.cs" />
+    <Compile Include="ModerationParticipantSearch.cs" />
+    <Compile Include="ParticipantMemory.cs" />
     <Compile Include="ModerationCommands.cs" />
     <Compile Include="..\tools\OpenChatRoomCleaner\Desktop.cs"><Link>ModerationShared\Desktop.cs</Link></Compile>
     <Compile Include="..\tools\OpenChatRoomCleaner\Vision.cs"><Link>ModerationShared\Vision.cs</Link></Compile>

@@ -232,6 +232,38 @@ internal static class MentionSenderTests
                 Throws(() => Sender(input).Prepare(Target, "봇", "본문", new[] { "유저" }));
                 Check(input.Begins == 1 && input.Clears == 0 && input.Sends == 0, "동시 입력 보존");
             });
+            Run("멘션 본문은 가리고 대상 ID는 유지", () =>
+            {
+                var input = new FakeInput(); var sender = Sender(input);
+                var ready = sender.Prepare(Target, "동일닉", "씨발 정상 안내 FUCK");
+                Check(ready.Text == "\uFFFC ** 정상 안내 ****\r" && ready.Mentions[0].UserId == Target, "본문 필터 또는 대상 손실");
+                sender.SendPrepared(ready);
+                Check(input.Sends == 1, "중복 전송");
+            });
+            Run("비속어 닉네임은 가린 일반 텍스트로 전송", () =>
+            {
+                var input = new FakeInput();
+                Sender(input).Send(Target, "씨발유저", "지랄 안내");
+                Check(input.SentText == "@**유저 ** 안내\r" && input.Sends == 1 && input.Retargets == 0, "닉네임 필터 누락");
+            });
+            Run("실제 후보 라벨의 비속어도 정리 후 일반 전송", () =>
+            {
+                var input = new FakeInput { Display = "@씨발" };
+                Sender(input).Send(Target, "유저", "본문");
+                Check(input.SentText == "@유저 본문\r" && input.Clears == 1 && input.Sends == 1, "후보 라벨 필터 누락");
+            });
+            Run("비속어 닉네임 일반 전송도 기존 초안 보존", () =>
+            {
+                var input = new FakeInput { Current = Snapshot("작성 중\r") };
+                Throws(() => Sender(input).Send(Target, "씨발", "본문"));
+                Check(input.Current.Text == "작성 중\r" && input.Sends == 0 && input.Clears == 0, "초안 손실");
+            });
+            Run("일반 알림 비속어 필터와 전송 불명확 시 재시도 금지", () =>
+            {
+                var input = new FakeInput { Acknowledge = false };
+                Throws(() => Sender(input).Send(Target, "씨발", "FUCK"));
+                Check(input.SentText == "@** ****\r" && input.Sends == 1, "일반 전송 필터 또는 재전송 오류");
+            });
             Console.WriteLine("PASS: " + passed + " cases (no native input or messages sent)");
             return 0;
         }
@@ -257,7 +289,7 @@ internal static class MentionSenderTests
         public bool Acknowledge = true;
         public int Begins, Retargets, Sends, Clears;
         public long CandidateId = 6593948531989662102L;
-        public string Display = "@동일닉", Search;
+        public string Display = "@동일닉", Search, SentText;
         public InputMentionSnapshot Read() { return Current; }
         private void Require(InputMentionSnapshot expected) { if (!KakaoInputMentions.SameSnapshot(Current, expected)) throw new InvalidOperationException("입력 변경"); }
         public void BeginMention(InputMentionSnapshot empty, string search) { Require(empty); Begins++; Search = search; Current = Snapshot(search + "\r"); }
@@ -277,7 +309,7 @@ internal static class MentionSenderTests
         }
         public void SendOnce(InputMentionSnapshot ready)
         {
-            Require(ready); Sends++;
+            Require(ready); Sends++; SentText = ready.Text;
             if (SendFails) throw new InvalidOperationException("키 전송 결과 불명");
             if (Acknowledge) Current = Snapshot("\r");
         }
